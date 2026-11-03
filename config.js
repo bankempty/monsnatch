@@ -5,5 +5,5 @@
 // ปล่อยว่างไว้ = เว็บทำงานแบบออฟไลน์ (ใช้ไฟล์ data/cards.json และบันทึก Deck ในเบราว์เซอร์เท่านั้น)
 window.MONSNATCH_CONFIG = {
   SUPABASE_URL: "https://mzghqqibaustzqldmjlw.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_GbE15HXpBCCl-CUqRo6s2w_Dho7XQLr"
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16Z2hxcWliYXVzdHpxbGRtamx3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2OTA1ODcsImV4cCI6MjEwOTI2NjU4N30.Z1YArIa9E-FHRSnCRaBFolFB9AeSFg82X6jx0MPMjls"
 };
