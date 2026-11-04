@@ -24,7 +24,7 @@
       fxN: 0, o: null, applied: 0, pollTok: 0, netErr: 0, endInfo: null, err: '', info: '', opp_age: 0, rooms: [], roomsTok: 0, thinking: false, rematch: false };
 
     /* ---------- util ---------- */
-    const flip = () => G.mode === 'online' && G.me === 1; /* นั่งอีกฝั่งโต๊ะ: กระดานหมุน 180° เหมือนมองจากที่นั่งตัวเอง */
+    const flip = () => false; /* กระดาน A-D เหมือนกันทั้งสองฝั่ง; แค่การ์ดของคู่ต่อสู้กลับหัว */
     const di2i = d => (flip() ? 15 - d : d);
     E.setNamer(i => E.rawName(flip() ? 15 - i : i));
     function setNames(a, b) { G.names = [a, b]; E.PN[0] = a; E.PN[1] = b; }
