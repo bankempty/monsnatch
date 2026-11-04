@@ -141,7 +141,7 @@
         cls.push(mine ? 'mine' : 'theirs', 'full');
         const p = E.pw(st, i), base = cd.p;
         const w = E.warded(st, c);
-        cls.push(c.k === 1 ? 'o1' : 'o0');
+        cls.push(c.o === 1 ? 'o1' : 'o0');
         inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward">🛡</i>' : ''}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
         inner = `<span class="cw">${inner}</span>`;
         if (c.o !== c.k) inner = inner.replace(/<\/span>$/, `<i class="own ${c.o === G.me ? 'me' : 'op'}" title="เจ้าของเดิม"></i></span>`);
