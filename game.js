@@ -24,7 +24,7 @@
       fxN: 0, o: null, applied: 0, pollTok: 0, netErr: 0, endInfo: null, err: '', info: '', opp_age: 0, rooms: [], roomsTok: 0, thinking: false, rematch: false };
 
     /* ---------- util ---------- */
-    const flip = () => false; /* ทั้งสองฝั่งเห็นกระดานเหมือนกัน — การ์ดของผู้เล่น 1 หันกลับหัวแทน */
+    const flip = () => G.mode === 'online' && G.me === 1; /* นั่งอีกฝั่งโต๊ะ: กระดานหมุน 180° เหมือนมองจากที่นั่งตัวเอง */
     const di2i = d => (flip() ? 15 - d : d);
     E.setNamer(i => E.rawName(flip() ? 15 - i : i));
     function setNames(a, b) { G.names = [a, b]; E.PN[0] = a; E.PN[1] = b; }
@@ -141,7 +141,7 @@
         cls.push(mine ? 'mine' : 'theirs', 'full');
         const p = E.pw(st, i), base = cd.p;
         const w = E.warded(st, c);
-        cls.push(c.o === 1 ? 'o1' : 'o0');
+        cls.push(c.o !== G.me ? 'o1' : 'o0'); /* การ์ดของเรา = หัวตั้ง, ของคู่ต่อสู้ = กลับหัว (ตามเจ้าของเดิม แม้ถูก Snatch) */
         inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward">🛡</i>' : ''}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
         inner = `<span class="cw">${inner}</span>`;
         if (c.o !== c.k) inner = inner.replace(/<\/span>$/, `<i class="own ${c.o === G.me ? 'me' : 'op'}" title="เจ้าของเดิม"></i></span>`);
@@ -149,7 +149,7 @@
       } else {
         cls.push('empty');
         if (G.sel && st.turn === G.me && !G.prompt && !G.busy) cls.push('can');
-        if (tg) { cls.push('tgt'); const cd = BY[G.sel]; if (cd) cls.push(G.me === 1 ? 'o1' : 'o0'); inner = `<span class="ghost gc" style="--c:var(--el-${cd.e})">${img(cd)}</span><span class="sight">${A.compass(cd.d)}</span>`; }
+        if (tg) { cls.push('tgt'); const cd = BY[G.sel]; if (cd) inner = `<span class="ghost gc" style="--c:var(--el-${cd.e})">${img(cd)}</span><span class="sight">${A.compass(cd.d)}</span>`; }
       }
       if (G.will && G.will.includes(i)) cls.push('will');
       if (pk) cls.push('pick');
