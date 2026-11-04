@@ -24,9 +24,9 @@
       fxN: 0, o: null, applied: 0, pollTok: 0, netErr: 0, endInfo: null, err: '', info: '', opp_age: 0, rooms: [], roomsTok: 0, thinking: false, rematch: false };
 
     /* ---------- util ---------- */
-    const flip = () => false; /* กระดาน A-D เหมือนกันทั้งสองฝั่ง; แค่การ์ดของคู่ต่อสู้กลับหัว */
+    const flip = () => G.mode === 'online' && G.me === 1; /* ผู้เล่นฝั่งตรงข้ามเห็นกระดานกลับด้าน 180° (D4 C4 B4 A4 อยู่แถวบน) ชื่อช่องเป็นชื่อจริงเสมอ */
     const di2i = d => (flip() ? 15 - d : d);
-    E.setNamer(i => E.rawName(flip() ? 15 - i : i));
+    E.setNamer(i => E.rawName(i));
     function setNames(a, b) { G.names = [a, b]; E.PN[0] = a; E.PN[1] = b; }
     function newKey() { const a = new Uint8Array(20); (crypto || window.msCrypto).getRandomValues(a); return Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); }
     function randDeck() {
