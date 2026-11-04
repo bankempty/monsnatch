@@ -3,90 +3,108 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Monsnatch Deck Builder</title>
-<meta name="description" content="จัด Deck Monsnatch 10 ใบ ไม่เกิน 25 ดาว ดูชนะ/แพ้รายธาตุ วิเคราะห์ แนวทางการเล่น และแนวทางแก้ทาง พร้อมบันทึกและแชร์ Deck">
-<meta name="theme-color" content="#0C7A84">
-<meta property="og:title" content="Monsnatch Deck Builder">
-<meta property="og:description" content="จัด Deck Monsnatch พร้อมวิเคราะห์ชนะ/แพ้รายธาตุและแนวทางการเล่น">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<title>Monsnatch Arena</title>
+<meta name="description" content="จัด Deck Monsnatch วิเคราะห์ธาตุ ฝึกเล่นกับบอท และเล่นออนไลน์กับเพื่อนได้ทันที ไม่ต้อง Login">
+<meta name="theme-color" content="#0B1020">
+<meta property="og:title" content="Monsnatch Arena">
+<meta property="og:description" content="จัด Deck · ฝึกเล่นกับบอท · เล่นออนไลน์ ไม่ต้อง Login">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Kanit:wght@500;600&display=swap">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Kanit:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-mode="build">
 <div class="app">
   <header class="top">
-    <div class="brand">
-      <h1>Monsnatch Deck Builder</h1>
-      <p>ชุด First Bond · การ์ด 181 ใบ · Deck 10 ใบ ไม่เกิน 25 ดาว ชื่อไม่ซ้ำ</p>
-    </div>
-    <div class="tools">
-      <select class="btn" id="presetSel" aria-label="โหลด Deck ตัวอย่าง">
-        <option value="">โหลด Deck ตัวอย่าง…</option>
-        <option value="ice">ไอซ์-เอิร์ธ ป้องกันแน่น</option>
-        <option value="fire">ไฟ-ไอซ์ บุกหนัก</option>
-      </select>
-      <button class="btn" id="btnClear">ล้าง Deck</button>
-    </div>
+    <a class="brand" href="./" aria-label="Monsnatch Arena">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="10" fill="url(#lg)"/><path d="M12 27V14l8 8 8-8v13" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="29.5" cy="10.5" r="3" fill="#FFD76A"/><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C5CFF"/><stop offset="1" stop-color="#19D3C5"/></linearGradient></defs></svg>
+      <span><b>Monsnatch Arena</b><small>จัดเด็ค · ฝึกเล่น · ออนไลน์</small></span>
+    </a>
+    <nav class="modes" aria-label="โหมด">
+      <button data-mode="build" aria-pressed="true"><i>🃏</i><span>จัดเด็ค</span></button>
+      <button data-mode="play" aria-pressed="false"><i>⚔️</i><span>เล่น</span></button>
+      <button data-mode="rules" aria-pressed="false"><i>📖</i><span>กติกา</span></button>
+    </nav>
   </header>
 
-  <nav class="nav" aria-label="ส่วนของหน้า"><div class="seg" id="paneSeg">
-    <button data-pane="pool" aria-pressed="false">คลังการ์ด</button>
-    <button data-pane="deck" aria-pressed="true">Deck</button>
-    <button data-pane="analysis" aria-pressed="false">วิเคราะห์</button>
-  </div></nav>
-
-  <main class="main">
-    <section class="panel pane" id="pool" aria-label="คลังการ์ด">
-      <h2>คลังการ์ด <small id="poolCount"></small></h2>
-      <div class="filters">
-        <input type="search" id="q" placeholder="ค้นหาชื่อการ์ดหรือความสามารถ" aria-label="ค้นหาการ์ด">
-        <div class="frow" id="fEl" role="group" aria-label="กรองตามธาตุ"></div>
-        <div class="frow" style="align-items:center">
-          <div class="frow" id="fStar" role="group" aria-label="กรองตามดาว"></div>
-          <select id="sort" aria-label="เรียงลำดับ" style="width:auto;margin-left:auto">
-            <option value="score">เรียง: คะแนนประเมิน</option>
-            <option value="eff">เรียง: พลังต่อดาว</option>
-            <option value="power">เรียง: พลังสูง→ต่ำ</option>
-            <option value="stars">เรียง: ดาวต่ำ→สูง</option>
-            <option value="sight">เรียง: ทิศ Snatch มาก→น้อย</option>
-            <option value="code">เรียง: เลขการ์ด</option>
-          </select>
-        </div>
+  <div id="viewBuild">
+    <div class="toolbar">
+      <p class="muted">Deck 10 ใบ · ไม่เกิน 25 ดาว · ชื่อไม่ซ้ำ · ชุด First Bond 181 ใบ</p>
+      <div class="tools">
+        <select class="btn" id="presetSel" aria-label="โหลด Deck ตัวอย่าง">
+          <option value="">โหลด Deck ตัวอย่าง…</option>
+          <option value="ice">ไอซ์-เอิร์ธ ป้องกันแน่น</option>
+          <option value="fire">ไฟ-ไอซ์ บุกหนัก</option>
+        </select>
+        <button class="btn" id="btnClear">ล้าง Deck</button>
+        <button class="btn primary" data-mode="play">⚔️ เอาเด็คนี้ไปเล่น</button>
       </div>
-      <div class="plist" id="plist"></div>
-    </section>
-
-    <div class="right">
-      <section class="panel pane" id="deck" aria-label="Deck ที่เลือก">
-        <h2><span id="deckTitle">Deck A</span><small id="deckSub"></small></h2>
-        <div class="dstat" id="dstat"></div>
-        <div class="alerts" id="alerts"></div>
-        <div class="slots" id="slots"></div>
-        <div class="savebox" id="savebox"></div>
-      </section>
-
-      <section class="panel pane" id="analysis" aria-label="วิเคราะห์">
-        <div class="tabs" role="tablist" id="tabs">
-          <button role="tab" data-tab="overview" aria-selected="true">ภาพรวม</button>
-          <button role="tab" data-tab="elements" aria-selected="false">ชนะ/แพ้ รายธาตุ</button>
-          <button role="tab" data-tab="play" aria-selected="false">แนวทางการเล่น</button>
-          <button role="tab" data-tab="counter" aria-selected="false">แนวทางแก้ทาง</button>
-        </div>
-        <div id="tabBody"></div>
-      </section>
     </div>
-  </main>
+
+    <nav class="nav" aria-label="ส่วนของหน้า"><div class="seg" id="paneSeg">
+      <button data-pane="pool" aria-pressed="false">คลังการ์ด</button>
+      <button data-pane="deck" aria-pressed="true">Deck</button>
+      <button data-pane="analysis" aria-pressed="false">วิเคราะห์</button>
+    </div></nav>
+
+    <main class="main">
+      <section class="panel pane" id="pool" aria-label="คลังการ์ด">
+        <h2>คลังการ์ด <small id="poolCount"></small></h2>
+        <div class="filters">
+          <input type="search" id="q" placeholder="ค้นหาชื่อการ์ดหรือความสามารถ" aria-label="ค้นหาการ์ด">
+          <div class="frow" id="fEl" role="group" aria-label="กรองตามธาตุ"></div>
+          <div class="frow" style="align-items:center">
+            <div class="frow" id="fStar" role="group" aria-label="กรองตามดาว"></div>
+            <div class="seg vseg" id="viewSeg" role="group" aria-label="มุมมอง"><button data-view="list" aria-pressed="true" title="รายการ">☰</button><button data-view="grid" aria-pressed="false" title="รูปการ์ด">▦</button></div>
+            <select id="sort" aria-label="เรียงลำดับ" style="width:auto">
+              <option value="score">เรียง: คะแนนประเมิน</option>
+              <option value="eff">เรียง: พลังต่อดาว</option>
+              <option value="power">เรียง: พลังสูง→ต่ำ</option>
+              <option value="stars">เรียง: ดาวต่ำ→สูง</option>
+              <option value="sight">เรียง: ทิศ Snatch มาก→น้อย</option>
+              <option value="code">เรียง: เลขการ์ด</option>
+            </select>
+          </div>
+        </div>
+        <div class="plist" id="plist"></div>
+      </section>
+
+      <div class="right">
+        <section class="panel pane" id="deck" aria-label="Deck ที่เลือก">
+          <h2><span id="deckTitle">Deck</span><small id="deckSub"></small></h2>
+          <div class="dstat" id="dstat"></div>
+          <div class="alerts" id="alerts"></div>
+          <div class="slots" id="slots"></div>
+          <div class="savebox" id="savebox"></div>
+        </section>
+
+        <section class="panel pane" id="analysis" aria-label="วิเคราะห์">
+          <div class="tabs" role="tablist" id="tabs">
+            <button role="tab" data-tab="overview" aria-selected="true">ภาพรวม</button>
+            <button role="tab" data-tab="elements" aria-selected="false">ชนะ/แพ้ รายธาตุ</button>
+            <button role="tab" data-tab="play" aria-selected="false">แนวทางการเล่น</button>
+            <button role="tab" data-tab="counter" aria-selected="false">แนวทางแก้ทาง</button>
+          </div>
+          <div id="tabBody"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="viewPlay" hidden><div id="gameRoot" class="gameroot"></div></div>
+  <div id="viewRules" hidden></div>
 
   <footer class="foot">
     <details class="gl"><summary>คำศัพท์ในเกม (จากข้อมูลทางการ)</summary><dl id="gloss"></dl></details>
-    <p>เครื่องมือของแฟนเกม ไม่ใช่ของทางการ ข้อมูลและรูปการ์ดชุด First Bond เป็นของ Momon Wonder Co., Ltd. (ข้อมูลจาก API สาธารณะของ monsnatch.com) <span id="srcNote"></span> คะแนนและคำแนะนำเป็นการประเมินจากตัวเลขการ์ดและความสามารถ ไม่ได้มาจากสถิติการแข่งจริง กติกาที่ตรวจ: Deck 10 ใบพอดี รวมไม่เกิน 25 ดาว ชื่อไม่ซ้ำ</p>
+    <p>เครื่องมือของแฟนเกม ไม่ใช่ของทางการ ข้อมูลและรูปการ์ดชุด First Bond เป็นของ Momon Wonder Co., Ltd. (ข้อมูลจาก API สาธารณะของ monsnatch.com) <span id="srcNote"></span> คะแนนและคำแนะนำเป็นการประเมินจากตัวเลขการ์ดและความสามารถ ไม่ได้มาจากสถิติการแข่งจริง</p>
   </footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 <div class="lb" id="lb" hidden></div>
 <script src="config.js"></script>
-<script src="assets/app.js"></script>
+<script src="app.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
 </body>
 </html>
