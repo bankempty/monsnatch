@@ -20,6 +20,7 @@
     'Snatch จากความสามารถ (On Summon/On Snatch/…) ข้ามการเทียบ Power/ธาตุ แต่ยังโดน Ward และข้อห้ามต่าง ๆ',
     'Snatch = พลิก Marking Token ให้เป็นฝั่งเรา ไม่ลูกโซ่ต่อ (ลูกโซ่เกิดจาก Incite เท่านั้น)',
     'จบเกมเมื่อ Arena เต็ม (หรือไม่มีใครมีการ์ดให้ลงอีก) คนคุมการ์ดมากกว่าชนะ เท่ากัน = คนถือ First Player Token ชนะ',
+    'กฎ Void: ถึงตาใครแล้วมือหมดแต่ Void ยังมีการ์ด คู่ต่อสู้สุ่มการ์ดจาก Void ของคนนั้นขึ้นมือให้ 1 ใบ (ปรับได้ที่ rules.vd) — เป็นการตีความจากฟีดแบ็กผู้เล่น ยังไม่ยืนยันกับกติกาทางการ',
     'ความสามารถที่ให้ "ฝ่ายตรงข้ามเลือกการ์ด" ระบบจะเลือกใบที่อ่อนที่สุดให้โดยอัตโนมัติ',
   ];
 
@@ -411,7 +412,17 @@
   /* ---------- turn flow ---------- */
   function endCheck(st) {
     if (st.board.every(c => c)) return true;
-    return !st.hands[0].length && !st.hands[1].length && !st.ret.length;
+    return !st.hands[0].length && !st.hands[1].length && !st.ret.length && !st.voids[0].length && !st.voids[1].length;
+  }
+  /* กฎ Void: ถ้าถึงตาเราแล้วมือหมด แต่ Void ยังมีการ์ด → คู่ต่อสู้สุ่มการ์ดจาก Void ของเราขึ้นมือให้ (ค่าเริ่มต้น 1 ใบ) */
+  function voidRefill(st) {
+    const p = st.turn, v = st.voids[p]; if (st.hands[p].length || !v.length || st.ret.some(r => r.p === p)) return false;
+    const n = Math.max(1, Math.min(v.length, (st.rules.vd | 0) || 1)), got = [];
+    for (let i = 0; i < n; i++) { const k = Math.floor(rnd(st) * v.length); got.push(v.splice(k, 1)[0]); }
+    st.hands[p].push(...got); st.last = null;
+    st.refill = { p, cards: got.slice(), at: st.mv };
+    say(st, `${PN[1 - p]} สุ่มการ์ดจาก Void ของ ${PN[p]} ขึ้นมือ: ${got.map(cn).join(', ')}`);
+    return true;
   }
   function finish(st) {
     st.over = true; const a = score(st, 0), b = score(st, 1);
@@ -422,6 +433,7 @@
     for (let i = 0; i < st.ret.length;) { const r = st.ret[i]; if (r.at === st.mv) { st.hands[r.p].push(r.code); st.ret.splice(i, 1); } else i++; }
     st.mv++; st.turn = (st.start + st.mv) % 2;
     if (endCheck(st)) { finish(st); return; }
+    voidRefill(st);
     if (!st.hands[st.turn].length) { say(st, `${PN[st.turn]} ไม่มีการ์ดให้ลง (ข้ามเทิร์น)`); advance(st); }
   }
   function endOfTurn(st) {

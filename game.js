@@ -28,6 +28,41 @@
     const di2i = d => (flip() ? 15 - d : d);
     E.setNamer(i => E.rawName(i));
     function setNames(a, b) { G.names = [a, b]; E.PN[0] = a; E.PN[1] = b; }
+    const mobile = () => window.matchMedia && window.matchMedia('(max-width:820px)').matches;
+
+    /* ---------- ลูกเต๋าหาผู้เริ่มก่อน (ผลคำนวณจาก seed จึงเหมือนกันทั้งสองฝั่ง และตรงกับ start ของเกม) ---------- */
+    const FACE = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+    function diceFor(seed, start) {
+      let s = (seed | 0) ^ 0x9E3779B9;
+      const r = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), s | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      r(); const x = 1 + Math.floor(r() * 6); let y = 1 + Math.floor(r() * 5); if (y >= x) y++;
+      const d = [0, 0]; d[start] = Math.max(x, y); d[1 - start] = Math.min(x, y); return d;
+    }
+    function closeDice() { document.querySelectorAll('.diceov').forEach(n => n.remove()); G.dice = false; }
+    function showDice(start, seed, done) {
+      closeDice(); G.dice = true;
+      const val = diceFor(seed, start), me = G.me, op = 1 - me; let fired = false, auto = 0;
+      const el = document.createElement('div'); el.className = 'diceov'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'ทอยลูกเต๋าหาผู้เริ่มก่อน');
+      el.innerHTML = `<div class="dicebox"><h2>🎲 ทอยลูกเต๋า</h2><p class="muted">ใครแต้มสูงกว่าได้เริ่มก่อน</p>
+        <div class="dicerow"><div class="dside"><b>${esc(G.names[me])}</b><div class="die" id="dieMe">⚀</div></div><div class="dvs">VS</div><div class="dside"><b>${esc(G.names[op])}</b><div class="die" id="dieOp">⚀</div></div></div>
+        <p class="dres" id="dRes" aria-live="polite">&nbsp;</p><button class="btn primary big" id="dBtn">🎲 ทอย</button></div>`;
+      document.body.appendChild(el);
+      const dm = el.querySelector('#dieMe'), dop = el.querySelector('#dieOp'), btn = el.querySelector('#dBtn'), res = el.querySelector('#dRes');
+      const roll = () => {
+        if (fired) return; fired = true; clearTimeout(auto); btn.disabled = true; btn.textContent = 'กำลังทอย…'; el.classList.add('rolling');
+        const t0 = Date.now(), iv = setInterval(() => { dm.textContent = FACE[Math.floor(Math.random() * 6)]; dop.textContent = FACE[Math.floor(Math.random() * 6)]; }, 80);
+        setTimeout(() => {
+          clearInterval(iv); el.classList.remove('rolling'); el.classList.add('landed');
+          dm.textContent = FACE[val[me] - 1]; dop.textContent = FACE[val[op] - 1];
+          dm.setAttribute('aria-label', 'แต้ม ' + val[me]); dop.setAttribute('aria-label', 'แต้ม ' + val[op]);
+          dm.classList.toggle('win', start === me); dop.classList.toggle('win', start === op);
+          res.innerHTML = `<b>${val[me]}</b> : <b>${val[op]}</b> — ${start === me ? 'คุณได้เริ่มก่อน!' : esc(G.names[op]) + ' เริ่มก่อน'}`;
+          btn.hidden = true;
+          setTimeout(() => { if (el.isConnected) { el.remove(); G.dice = false; if (done) done(); } }, 2100);
+        }, 1300);
+      };
+      btn.addEventListener('click', roll); auto = setTimeout(roll, 7000);
+    }
     function newKey() { const a = new Uint8Array(20); (crypto || window.msCrypto).getRandomValues(a); return Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); }
     function randDeck() {
       const pool = C.filter(c => c.e !== 'origin');
@@ -200,6 +235,53 @@
       const backs = mine ? '' : `<span class="backs">${'<i></i>'.repeat(st.hands[p].length)}</span>`;
       return `<div class="side ${mine ? 'me' : 'op'}${turn}">${online}<b class="nm">${esc(G.names[p])}</b>${tok}${backs}<span class="meta">มือ ${st.hands[p].length} · Void ${st.voids[p].length}</span><span class="score"><small>คะแนน</small>${E.score(st, p)}</span></div>`;
     }
+    /* ---------- ป๊อปอัปกลางจอ (มือถือ + ความสามารถการ์ด) ---------- */
+    function cardDetail(code) {
+      const c = BY[code]; if (!c) return '';
+      return `<div class="pdetail"><div class="pimg gc" style="--c:var(--el-${c.e})" data-act="zoom" data-code="${c.c}" role="button" tabindex="0" aria-label="ดูรูปใหญ่">${img(c, true)}</div>
+        <div class="ptxt"><h3>${esc(c.n)}</h3><div class="line">${A.elChip(c.e)}<span class="badge">พลัง ${c.p}</span><span class="badge">${c.s} ดาว</span></div><div class="cmp">${A.compass(c.d)}<span class="muted">ทิศ Snatch</span></div>
+        ${c.b.length ? `<div class="line"><span class="muted">ชนะธาตุ</span>${c.b.map(e => A.elChip(e, true)).join('')}</div>` : ''}</div></div>
+        ${c.a ? `<p class="pab">${A.abHtml(c.t || c.a)}</p>` : '<p class="pab muted">ไม่มีความสามารถพิเศษ</p>'}`;
+    }
+    function miniBoard(pr) {
+      const st = G.st, sel = pr ? pr.opts.map(o => o.i) : [];
+      let h = '';
+      for (let d = 0; d < 16; d++) {
+        const i = di2i(d), c = st.board[i], ok = sel.includes(i), k = pr && pr.kind === 'cell' ? pr.opts.findIndex(o => o.i === i) : -1;
+        const inner = c ? `<span class="gc mbi ${c.o !== G.me ? 'o1' : ''}" style="--c:var(--el-${BY[c.c].e})">${img(BY[c.c])}</span><b class="mpw">${E.pw(st, i)}</b>` : '';
+        h += `<button class="mb ${c ? (c.k === G.me ? 'mine' : 'theirs') : 'empty'} ${ok ? 'ok' : pr ? 'dim' : ''}" ${k >= 0 ? `data-pa="${k}"` : 'disabled'} aria-label="ช่อง ${E.cellName(i)}${c ? ' ' + esc(BY[c.c].n) : ' ว่าง'}"><span class="mcn">${E.cellName(i)}</span>${inner}</button>`;
+      }
+      return `<div class="mbgrid" role="grid">${h}</div>`;
+    }
+    function modalHtml() {
+      const st = G.st; if (!st) return '';
+      if (G.prompt && !st.over) {
+        const pr = G.prompt.pr, src = pr.src != null && st.board[pr.src] ? BY[st.board[pr.src].c] : null;
+        let body = '', btns = '';
+        if (pr.kind === 'card') body = `<div class="plist">${pr.opts.map((o, k) => { const c = BY[o.c]; return `<button class="hc" data-pa="${k}" style="--c:var(--el-${c.e})" aria-label="${esc(c.n)} พลัง ${c.p}"><span class="gc himg">${img(c)}</span><b class="hp">${c.p}</b><b class="hs">${c.s}★</b><span class="hn">${esc(c.n)}</span></button>`; }).join('')}</div>`;
+        else body = miniBoard(pr) + (pr.kind === 'cell' ? '<p class="muted pnote">แตะช่องที่ไฮไลต์เพื่อเลือก</p>' : '');
+        if (pr.kind === 'yn') btns += `<button class="btn primary" data-g="yn">ยืนยัน</button>`;
+        if (pr.optional) btns += `<button class="btn" data-g="skip">${pr.kind === 'yn' ? 'ไม่ใช้' : 'ข้าม / ไม่ใช้'}</button>`;
+        return `<div class="pop" role="dialog" aria-modal="true" aria-label="ความสามารถการ์ด"><div class="popbox prompt">
+          <div class="phead">${src ? `<span class="gc pthumb" style="--c:var(--el-${src.e})">${img(src)}</span>` : ''}<div><small class="muted">ความสามารถการ์ด${src ? ' ' + esc(src.n) : ''}</small><h3>${esc(pr.text || 'เลือก')}</h3></div></div>
+          ${body}${btns ? `<div class="btnrow center">${btns}</div>` : ''}</div></div>`;
+      }
+      if (!G.pop || st.over || G.endInfo) return '';
+      if (G.pop === 'card' && G.sel) return `<div class="pop" role="dialog" aria-modal="true" aria-label="การ์ดที่เลือก"><div class="popbox"><button class="px" data-g="pclose" aria-label="ปิด">×</button>${cardDetail(G.sel)}
+        <div class="btnrow center"><button class="btn primary big" data-g="pgo">เลือกช่องวาง →</button><button class="btn" data-g="pcancel">ยกเลิก</button></div></div></div>`;
+      if (G.pop === 'confirm' && G.sel && G.tgt != null) {
+        const w = G.will || [], names = w.map(i => st.board[i] ? esc(BY[st.board[i].c].n) + ' (' + E.cellName(i) + ')' : '').filter(Boolean);
+        return `<div class="pop" role="dialog" aria-modal="true" aria-label="ยืนยันการลงการ์ด"><div class="popbox"><button class="px" data-g="pclose" aria-label="ปิด">×</button><h3 class="ptitle">ลง ${esc(BY[G.sel].n)} ที่ ${E.cellName(G.tgt)}?</h3>${cardDetail(G.sel)}
+          <p class="pwill ${w.length ? 'yes' : ''}">${w.length ? `Snatch ได้แน่ ๆ ${w.length} ใบ: ${names.join(', ')} <small class="muted">(ยังไม่รวมความสามารถการ์ด)</small>` : 'ยังไม่ Snatch ใครจากทิศปกติ'}</p>
+          <div class="btnrow center"><button class="btn primary big" data-g="place">ลงการ์ด</button><button class="btn" data-g="pchange">เปลี่ยนช่อง</button></div></div></div>`;
+      }
+      if (G.pop === 'info' && G.inspect) {
+        const ic = G.inspect.cell != null && st.board[G.inspect.cell] ? st.board[G.inspect.cell] : null;
+        return `<div class="pop" role="dialog" aria-modal="true" aria-label="รายละเอียดการ์ด" data-g="pclose"><div class="popbox" data-keep="1"><button class="px" data-g="pclose" aria-label="ปิด">×</button>${cardDetail(G.inspect.code)}
+          ${ic ? `<p class="muted pnote">ตอนนี้ฝั่ง ${esc(G.names[ic.k])} คุมอยู่ · พลังปัจจุบัน ${E.pw(st, G.inspect.cell)}</p>` : ''}<div class="btnrow center"><button class="btn" data-g="pclose">ปิด</button></div></div></div>`;
+      }
+      return '';
+    }
     function renderGame() {
       const st = G.st; if (!st) return;
       const fxStart = st.fx.length < G.fxN ? 0 : G.fxN; G.fxN = st.fx.length;
@@ -229,7 +311,8 @@
           <section class="card infobox">${infoHtml()}</section>
           <section class="card logbox"><h3>บันทึกเกม</h3><ol class="log">${logs || '<li class="muted">ยังไม่มีการเดิน</li>'}</ol></section>
         </aside>
-      </div>${end}`;
+      </div>${end}${modalHtml()}`;
+      if (st.refill && st.refill.at === st.mv && st.refill !== G.refillSeen) { G.refillSeen = st.refill; const r = st.refill; toast(r.p === G.me ? 'มือคุณหมด — คู่ต่อสู้สุ่มการ์ดจาก Void ขึ้นมือให้ 🎴' : 'คู่ต่อสู้มือหมด — คุณสุ่มการ์ดจาก Void ให้เขา 🎴'); }
     }
 
     /* ---------- prompts (abilities) ---------- */
@@ -237,7 +320,7 @@
       return new Promise(res => {
         const cells = pr.kind === 'cell' || pr.kind === 'yn' ? pr.opts.map(o => o.i) : null;
         const cards = pr.kind === 'card' ? pr.opts.map(o => o.c) : null;
-        G.prompt = { pr, cells, cards, resolve: res }; G.sel = null; G.tgt = null; G.will = null; render();
+        G.prompt = { pr, cells, cards, resolve: res }; G.pop = null; G.sel = null; G.tgt = null; G.will = null; render();
       });
     }
     function answer(v) { const p = G.prompt; if (!p) return; G.prompt = null; p.resolve(v); }
@@ -249,8 +332,9 @@
       const start = opt.first === 'me' ? 0 : opt.first === 'bot' ? 1 : Math.random() < .5 ? 0 : 1;
       G.mode = 'bot'; G.me = 0; G.o = null; setNames('คุณ', 'บอท');
       G.st = E.newGame({ decks: [mine, od.slice()], start, seed: (Math.random() * 2e9) | 0, rules: { elem: opt.elem } });
-      Object.assign(G, { screen: 'game', sel: null, tgt: null, will: null, prompt: null, busy: false, thinking: false, fxN: 0, endInfo: null, err: '', hideEnd: false });
-      render(); window.scrollTo({ top: 0 }); botLoop();
+      Object.assign(G, { screen: 'game', sel: null, tgt: null, will: null, prompt: null, pop: null, busy: false, thinking: false, fxN: 0, endInfo: null, err: '', hideEnd: false, refillSeen: null });
+      render(); window.scrollTo({ top: 0 });
+      if (opt.first === 'rand') showDice(start, G.st.rng, () => { if (G.mode === 'bot') { render(); botLoop(); } }); else { closeDice(); botLoop(); }
     }
     async function botLoop() {
       const st = G.st; const tok = G.st;
@@ -269,7 +353,7 @@
     /* ---------- human move ---------- */
     async function humanPlay(code, x) {
       const st = G.st; if (G.busy || st.over || st.turn !== G.me) return;
-      G.busy = true; G.sel = null; G.tgt = null; G.will = null; G.inspect = null;
+      G.busy = true; G.sel = null; G.tgt = null; G.will = null; G.inspect = null; G.pop = null;
       const rec = []; let ok = true;
       try {
         const gen = E.applyG(st, { c: code, x }); let r = gen.next();
@@ -298,7 +382,9 @@
     }
     document.addEventListener('click', ev => {
       if ($('viewPlay').hidden) return;
+      const pa = ev.target.closest('[data-pa]'); if (pa && G.prompt) return answer(+pa.dataset.pa);
       const cell = ev.target.closest('[data-cell]'), hand = ev.target.closest('[data-hand]'), g = ev.target.closest('[data-g]');
+      if (g && g.matches('.pop') && ev.target.closest('.popbox')) return; /* แตะในกล่องไม่ปิดป๊อปอัป */
       if (g) return gAction(g);
       if (!G.st || G.screen !== 'game') return;
       if (hand) {
@@ -306,15 +392,19 @@
         if (G.prompt && G.prompt.cards) { const k = G.prompt.cards.indexOf(code); if (k >= 0) answer(G.prompt.pr.opts.findIndex(o => o.c === code)); return; }
         if (G.prompt) return;
         G.inspect = { code, cell: null };
-        if (G.st.turn === G.me && !G.busy && !G.st.over) { G.sel = G.sel === code ? null : code; G.tgt = null; computeWill(); }
+        if (G.st.turn === G.me && !G.busy && !G.st.over) {
+          if (mobile()) { G.sel = code; G.tgt = null; G.will = null; G.pop = 'card'; }
+          else { G.sel = G.sel === code ? null : code; G.tgt = null; computeWill(); }
+        } else if (mobile()) G.pop = 'info';
         render(); return;
       }
       if (cell) {
         const i = +cell.dataset.cell, c = G.st.board[i];
         if (G.prompt && G.prompt.cells) { const k = G.prompt.cells.indexOf(i); if (k >= 0) { const pr = G.prompt.pr; answer(pr.kind === 'yn' ? 0 : pr.opts.findIndex(o => o.i === i)); } return; }
         if (G.prompt) return;
-        if (c) { G.inspect = { code: c.c, cell: i }; if (!G.sel) render(); else { render(); } return; }
+        if (c) { G.inspect = { code: c.c, cell: i }; if (mobile()) G.pop = 'info'; render(); return; }
         if (G.sel && G.st.turn === G.me && !G.busy && !G.st.over) {
+          if (mobile()) { G.tgt = i; computeWill(); G.pop = 'confirm'; render(); return; }
           if (G.tgt === i) { humanPlay(G.sel, i); return; }
           G.tgt = i; computeWill(); render();
         }
@@ -362,6 +452,10 @@
       if (a === 'lobby') { if (G.mode === 'bot' && G.st && !G.st.over && !confirm('ออกจากเกมนี้?')) return; return backToLobby(); }
       if (a === 'again') return startBot();
       if (a === 'hideend') { G.hideEnd = true; return render(); }
+      if (a === 'pclose') { G.pop = null; return render(); }
+      if (a === 'pcancel') { G.sel = null; G.tgt = null; G.will = null; G.pop = null; return render(); }
+      if (a === 'pgo') { G.pop = null; return render(); }
+      if (a === 'pchange') { G.tgt = null; G.will = null; G.pop = null; return render(); }
       if (a === 'place') { if (G.sel && G.tgt != null) humanPlay(G.sel, G.tgt); return; }
       if (a === 'unsel') { G.sel = null; G.tgt = null; G.will = null; return render(); }
       if (a === 'skip') return answer(-1);
@@ -369,7 +463,7 @@
     }
     function backToLobby() {
       G.pollTok++; if (G.mode === 'online' && G.o && G.st && G.st.over) store.del(SESS_KEY);
-      Object.assign(G, { screen: 'lobby', st: null, o: null, mode: null, prompt: null, busy: false, thinking: false, endInfo: null, err: '', sel: null, tgt: null, will: null, hideEnd: false });
+      closeDice(); Object.assign(G, { pop: null, screen: 'lobby', st: null, o: null, mode: null, prompt: null, busy: false, thinking: false, endInfo: null, err: '', sel: null, tgt: null, will: null, hideEnd: false });
       render(); loadRooms();
     }
 
@@ -411,7 +505,8 @@
       let fresh = false;
       if (!G.st) {
         if (r.status === 'waiting' || !r.deck_b) { if (G.screen === 'wait') renderWait(); return; }
-        G.st = E.newGame(setupFrom(r)); G.o.setup = setupFrom(r); G.applied = 0; G.screen = 'game'; G.fxN = 0; fresh = true;
+        G.st = E.newGame(setupFrom(r)); G.o.setup = setupFrom(r); G.applied = 0; G.screen = 'game'; G.fxN = 0; fresh = true; G.refillSeen = null; G.pop = null;
+        if (!resumeQuiet && !r.moves.length && r.status === 'playing') showDice(r.start, r.seed);
         if (!resumeQuiet) toast('เจอคู่แล้ว! ' + G.names[1 - G.me] + (G.st.turn === G.me ? ' — คุณเริ่มก่อน' : ' เริ่มก่อน'));
       }
       if (G.busy) return;
