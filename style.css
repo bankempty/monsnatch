@@ -477,3 +477,20 @@ body{background:radial-gradient(1200px 500px at 85% -10%,color-mix(in srgb,var(-
 @keyframes dshake{0%{transform:rotate(-9deg) translateY(-3px)}50%{transform:rotate(9deg) translateY(3px)}100%{transform:rotate(-9deg) translateY(-3px)}}
 @keyframes dland{0%{transform:scale(1.35) rotate(18deg)}100%{transform:none}}
 @media (prefers-reduced-motion:reduce){.mb.ok,.rolling .die{animation:none}}
+
+/* ===== แนะนำสลับการ์ด ===== */
+.simctl{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:8px 0}
+.simctl .fld{display:grid;gap:3px;font-size:12px;color:var(--muted)}
+.simctl select{min-height:40px}
+.simbar{height:8px;border-radius:6px;background:var(--surface2);border:1px solid var(--line);overflow:hidden;margin-top:6px}
+.simbar i{display:block;height:100%;background:var(--accent);transition:width .15s}
+.swap2{display:grid;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
+.sw-top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.sw-pair{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sw-pair .arrow{color:var(--muted)}
+.sw-sim{font-size:13px}
+.sw-sim.good b{color:var(--good)}.sw-sim.bad b{color:var(--bad)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;list-style:none;margin:0;padding:0}
+.chips li{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.chips li.good{border-color:color-mix(in srgb,var(--good) 55%,var(--line));color:var(--good)}
+.chips li.warn{border-color:color-mix(in srgb,#E6A700 60%,var(--line))}
