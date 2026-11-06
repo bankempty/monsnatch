@@ -183,6 +183,113 @@ function suggest(){
   return outList;
 }
 
+/* ---------- แนะนำสลับการ์ด (static + จำลองด้วยเอนจินเกม) ---------- */
+const SWAP = {sig:'', sim:null, running:false, tok:0, prog:0, lv:'normal', err:''};
+const SIMLV = {fast:60, normal:120, deep:300};
+const decksig = d => d.join(',');
+function swapCands(){
+  const cur = S.deck; if (cur.length < DECKSIZE) return [];
+  const stars = stats(cur), b = quick(cur), obj = o => o.rating - .35 * o.weak, b0 = obj(b);
+  const pool = C.filter(c => c.e !== 'origin' && !cur.includes(c.c)), res = [];
+  cur.forEach(o => pool.forEach(c => {
+    if (stars - BY[o].s + c.s > MAXSTAR) return;
+    const nd = cur.map(x => x === o ? c.c : x), q = quick(nd);
+    res.push({out: BY[o], add: c, d: obj(q) - b0, deck: nd});
+  }));
+  res.sort((a, b) => b.d - a.d);
+  const per = {}, list = [];
+  res.forEach(r => { per[r.out.c] = (per[r.out.c] || 0) + 1; if (per[r.out.c] <= 2) list.push(r); });
+  return list.slice(0, 12);
+}
+function swapReasons(r){
+  const A0 = analyze(S.deck), A1 = analyze(r.deck), o = r.out, c = r.add, out = [];
+  const names = a => a.map(e => ELN[e][0]).join(', ');
+  const fix = A0.loss.filter(e => !A1.loss.includes(e)); if (fix.length) out.push(['good', `แก้ธาตุที่เสียเปรียบ: ${names(fix)}`]);
+  const cov = A1.cov.filter(e => !A0.cov.includes(e)); if (cov.length) out.push(['good', `ได้ตัวชนะธาตุใหม่: ${names(cov)}`]);
+  const bad = A1.loss.filter(e => !A0.loss.includes(e)); if (bad.length) out.push(['warn', `เสียเปรียบธาตุเพิ่ม: ${names(bad)}`]);
+  if (c.p !== o.p) out.push([c.p > o.p ? 'good' : 'warn', `พลัง ${o.p} → ${c.p}`]);
+  if (c.d.length !== o.d.length) out.push([c.d.length > o.d.length ? 'good' : 'warn', `ทิศ Snatch ${o.d.length} → ${c.d.length}`]);
+  ['guard', 'reach'].forEach(k => { if (c.roles.includes(k) && !o.roles.includes(k)) out.push(['good', k === 'guard' ? 'เพิ่มตัวป้องกัน (Ward/กันถูกแย่ง)' : 'เพิ่มตัวรุกพิเศษ']); if (!c.roles.includes(k) && o.roles.includes(k)) out.push(['warn', k === 'guard' ? 'เสียตัวป้องกัน' : 'เสียตัวรุกพิเศษ']); });
+  const ds = c.s - o.s; out.push(['info', ds < 0 ? `ประหยัด ${-ds}★` : ds > 0 ? `ใช้ดาวเพิ่ม ${ds}★` : 'ดาวเท่าเดิม']);
+  const u0 = synergy(A0).filter(x => !x.ok).map(x => x.c.c), u1 = synergy(A1).filter(x => !x.ok);
+  u1.filter(x => !u0.includes(x.c.c)).forEach(x => out.push(['warn', `${x.c.n} ใช้ความสามารถไม่ได้ (ขาดต้นทุนใน Deck)`]));
+  const fixed = u0.filter(id => !u1.some(x => x.c.c === id)); if (fixed.length) out.push(['good', 'ความสามารถที่เคยใช้ไม่ได้ กลับมาใช้ได้']);
+  return out.slice(0, 5);
+}
+/* gauntlet ฝั่งตรงข้ามคงที่ (seed คงที่) เพื่อให้เทียบก่อน/หลังได้แฟร์ */
+function gauntlet(){
+  const out = [PRESET.ice.slice(), PRESET.fire.slice()]; let s = 20240611;
+  const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  const pool = C.filter(c => c.e !== 'origin');
+  while (out.length < 8) {
+    const p = pool.slice().sort(() => rnd() - .5), d = [], nm = new Set(); let st = 0;
+    for (const c of p) { if (nm.has(c.n) || st + c.s > MAXSTAR) continue; d.push(c.c); nm.add(c.n); st += c.s; if (d.length === DECKSIZE) break; }
+    if (d.length === DECKSIZE) out.push(d);
+  }
+  return out;
+}
+function playOne(E, mine, opp, i, opps){
+  const seat = i & 1, start = (i >> 1) & 1, decks = seat === 0 ? [mine, opp] : [opp, mine];
+  const st = E.newGame({decks: decks.map(x => x.slice()), start, seed: 7000 + i * 7919, rules: {elem: true}});
+  let g = 0; const ch = E.autoChooser('normal');
+  while (!st.over && g++ < 40) { const mv = E.botMove(st, 'normal'); if (!mv) break; E.apply(st, mv, ch); }
+  return st.over ? (st.res.w === seat ? 1 : 0) : 0.5;
+}
+async function runSim(){
+  const E = window.MSE; if (!E) { SWAP.err = 'ยังโหลดเอนจินเกมไม่เสร็จ ลองใหม่อีกครั้ง'; return renderTabs(); }
+  if (S.deck.length < DECKSIZE) return;
+  const tok = ++SWAP.tok, n = SIMLV[SWAP.lv] || 120, cands = swapCands(), opps = gauntlet();
+  const variants = [{key:'base', deck:S.deck.slice()}].concat(cands.map(r => ({key:r.out.c + '>' + r.add.c, deck:r.deck})));
+  E.init(C); SWAP.running = true; SWAP.err = ''; SWAP.prog = 0; SWAP.sim = null; SWAP.sig = decksig(S.deck); renderTabs();
+  const total = variants.length * n, res = {}; let done = 0, t0 = performance.now();
+  variants.forEach(v => res[v.key] = new Array(n));
+  try {
+    for (let i = 0; i < n; i++) {
+      for (const v of variants) {
+        res[v.key][i] = playOne(E, v.deck, opps[i % opps.length], i, opps); done++;
+        if (performance.now() - t0 > 14) {
+          await new Promise(r => setTimeout(r, 0)); t0 = performance.now();
+          if (tok !== SWAP.tok || SWAP.sig !== decksig(S.deck)) return;
+          SWAP.prog = done / total; const el = $('simProg'); if (el) { el.style.width = (SWAP.prog * 100).toFixed(0) + '%'; $('simTxt').textContent = `กำลังจำลอง ${Math.round(SWAP.prog * 100)}%`; }
+        }
+      }
+    }
+  } catch (e) { SWAP.running = false; SWAP.err = 'จำลองไม่สำเร็จ: ' + e.message; return renderTabs(); }
+  if (tok !== SWAP.tok) return;
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length, base = res.base, out = {};
+  cands.forEach(r => {
+    const k = r.out.c + '>' + r.add.c, a = res[k], diff = a.map((x, i) => x - base[i]), m = mean(diff);
+    const sd = Math.sqrt(mean(diff.map(x => (x - m) * (x - m)))), z = sd > 0 ? m / (sd / Math.sqrt(n)) : 0;
+    out[k] = {wr: mean(a), dm: m, z};
+  });
+  SWAP.sim = {n, base: mean(base), out, opps: opps.length}; SWAP.running = false; renderTabs();
+}
+function tabSwap(A){
+  if (A.n < DECKSIZE) return `<div class="empty">เลือกการ์ดให้ครบ ${DECKSIZE} ใบก่อน แล้วระบบจะแนะนำว่าควรสลับใบไหนเป็นใบไหน<br><span class="muted">(ตอนนี้ ${A.n}/${DECKSIZE} ใบ)</span></div>`;
+  if (SWAP.sig && SWAP.sig !== decksig(S.deck) && !SWAP.running) { SWAP.sim = null; SWAP.sig = ''; }
+  const cands = swapCands(), sim = SWAP.sim && SWAP.sig === decksig(S.deck) ? SWAP.sim : null;
+  let rows = cands.map(r => Object.assign({}, r, {k: r.out.c + '>' + r.add.c}));
+  if (sim) { rows.forEach(r => { r.sim = sim.out[r.k]; }); rows.sort((a, b) => b.sim.dm - a.sim.dm); }
+  const lab = s => s.z >= 2.6 ? ['good', 'ดีขึ้นชัดเจน'] : s.z >= 1.3 ? ['info', 'น่าจะดีขึ้น'] : s.z <= -2.6 ? ['bad', 'แย่ลง'] : s.z <= -1.3 ? ['warn', 'น่าจะแย่ลง'] : ['muted', 'ใกล้เคียงเดิม (ต่างไม่ชัด)'];
+  const pct = x => Math.round(x * 100) + '%';
+  const ctl = `<div class="simctl"><label class="fld">ความละเอียด<select id="simLv"><option value="fast" ${SWAP.lv === 'fast' ? 'selected' : ''}>เร็ว (${SIMLV.fast} เกม/ตัวเลือก)</option><option value="normal" ${SWAP.lv === 'normal' ? 'selected' : ''}>ปกติ (${SIMLV.normal})</option><option value="deep" ${SWAP.lv === 'deep' ? 'selected' : ''}>ละเอียด (${SIMLV.deep})</option></select></label>
+    <button class="btn primary" data-act="simrun" ${SWAP.running ? 'disabled' : ''}>${sim ? '🔁 จำลองใหม่' : '🧪 จำลองแข่งเพื่อจัดอันดับ'}</button></div>
+    ${SWAP.running ? `<div class="simbar" role="progressbar" aria-label="ความคืบหน้า"><i id="simProg" style="width:${Math.round(SWAP.prog * 100)}%"></i></div><p class="note" id="simTxt">กำลังจำลอง…</p>` : ''}
+    ${SWAP.err ? `<p class="note" style="color:var(--bad)">${esc(SWAP.err)}</p>` : ''}`;
+  const head = sim ? `<div class="kpis"><div class="kpi"><div class="k">Deck ปัจจุบัน (จำลอง)</div><div class="v">${pct(sim.base)}<small> ชนะ จาก ${sim.n} เกม</small></div></div><div class="kpi"><div class="k">คู่ต่อสู้ทดสอบ</div><div class="v">${sim.opps}<small> ชุด สลับฝั่ง/ผู้เริ่ม</small></div></div></div>` : '';
+  if (!rows.length) return `<div class="sec" style="margin-top:0"><h3>แนะนำสลับการ์ด</h3><div class="empty">ไม่พบการสลับที่ดีกว่าเดิมภายใต้กติกา (10 ใบ ≤ ${MAXSTAR} ดาว) Deck นี้ค่อนข้างลงตัวแล้ว</div></div>`;
+  return `<div class="sec" style="margin-top:0"><h3>แนะนำสลับการ์ด</h3>
+    <p class="note">ลองสลับทีละ 1 ใบ (ครบ 10 ใบ ≤ ${MAXSTAR} ดาว ชื่อไม่ซ้ำ) เรียงตามคะแนนประเมิน กด "จำลองแข่ง" ให้บอทเล่นเทียบ Deck เดิมกับ Deck ที่สลับ เพื่อดู % ชนะ <b>(เป็นค่าประมาณจากบอท ตัวบนสุดมักดูดีเกินจริงเล็กน้อย — เลือก "ละเอียด" เพื่อความมั่นใจ)</b></p>
+    ${ctl}${head}
+    <div class="mt" style="margin-top:10px">${rows.map(r => {
+      const rs = swapReasons(r), s = r.sim, L = s ? lab(s) : null;
+      return `<div class="swap2"><div class="sw-top"><div class="sw-pair">เอา ${pcard(r.out)} <span class="arrow">→</span> ใส่ ${pcard(r.add)}</div>
+        <button class="btn primary" data-act="apply" data-out="${r.out.c}" data-in="${r.add.c}">สลับเลย</button></div>
+        ${s ? `<div class="sw-sim ${L[0]}"><b>${pct(s.wr)}</b> ชนะ <span class="muted">(${s.dm >= 0 ? '+' : ''}${(s.dm * 100).toFixed(0)} จุดจากเดิม)</span> · ${L[1]}</div>` : `<div class="sw-sim muted">คะแนนประเมิน ${r.d >= 0 ? '+' : ''}${r.d.toFixed(2)}</div>`}
+        <ul class="chips">${rs.map(x => `<li class="${x[0]}">${esc(x[1])}</li>`).join('')}</ul></div>`;
+    }).join('')}</div></div>`;
+}
+
 /* ---------- pool ---------- */
 function reasonBlocked(c){
   const d = S.deck;
@@ -382,7 +489,7 @@ function tabCounter(A){
 function renderTabs(){
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
   const A = analyze(S.deck);
-  $('tabBody').innerHTML = ({overview:tabOverview, elements:tabElements, play:tabPlay, counter:tabCounter})[S.tab](A);
+  $('tabBody').innerHTML = ({overview:tabOverview, elements:tabElements, play:tabPlay, counter:tabCounter, swap:tabSwap})[S.tab](A);
 }
 function renderAll(){ renderHeader(); renderPool(); renderDeck(); renderTabs(); }
 
@@ -405,6 +512,7 @@ document.addEventListener('click', ev => {
     if (ds.out) { const i = d.indexOf(ds.out); if (i >= 0) d[i] = ds.in; else d.push(ds.in); } else d.push(ds.in);
     S.oppTouched = false; toast('ปรับ Deck แล้ว'); save(); renderAll();
   }
+  else if (ds.act === 'simrun') runSim();
   else if (ds.act === 'zoom') zoom(ds.code);
   else if (ds.view) { S.view = ds.view; try { localStorage.setItem('msdb-view', S.view); } catch (e) {} renderPool(); }
   else if (ds.act === 'closezoom') closeZoom();
@@ -414,6 +522,7 @@ document.addEventListener('click', ev => {
   else if (ds.star) { S.fStar = ds.star; renderFilters(); renderPool(); }
   else if (ds.opp) { S.oppTouched = true; const a = S.opp || []; const i = a.indexOf(ds.opp); if (i >= 0) a.splice(i, 1); else a.push(ds.opp); S.opp = a; renderTabs(); }
 });
+document.addEventListener('change', e => { if (e.target.id === 'simLv') SWAP.lv = e.target.value; });
 $('q').addEventListener('input', e => { S.q = e.target.value; renderPool(); });
 $('sort').addEventListener('change', e => { S.sort = e.target.value; renderPool(); });
 $('presetSel').addEventListener('change', e => {
