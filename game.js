@@ -152,7 +152,7 @@
         </section>
       </div>
       ${roomsHtml()}
-      <details class="card note"><summary>กติกาที่ใช้ในเกมนี้ (สรุป)</summary><ul>${E.RULES_NOTE.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="muted">กติกาทางการอยู่ในหน้า Rules ของ monsnatch.com ซึ่งโหลดด้วย JavaScript อ่านอัตโนมัติไม่ได้ กติกาในนี้จึงสร้างจากคำอธิบายคำศัพท์ทางการและข้อความบนการ์ดทั้งหมด หากต่างจากของจริงบอกได้เลย ปรับแก้ได้</p></details>`;
+      <details class="card note"><summary>กติกาที่ใช้ในเกมนี้ (สรุป)</summary><ul>${E.RULES_NOTE.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="muted">อ้างอิงจาก Comprehensive Rules ทางการ (Sections 8–16) และข้อความบนการ์ด ส่วนที่ยังไม่ได้ยืนยัน (การตั้งค่าเริ่มเกม/จบเกม Sections 1–7) ใช้ค่าที่ตีความไว้</p></details>`;
     }
 
     function renderWait() {
@@ -193,7 +193,7 @@
       return `<button class="${cls.join(' ')}" data-cell="${i}" aria-label="ช่อง ${E.cellName(i)}${c ? ' ' + esc(BY[c.c].n) : ' ว่าง'}"><span class="cn">${E.cellName(i)}</span>${inner}</button>`;
     }
     function handHtml() {
-      const st = G.st, h = st.hands[G.me].slice().sort((a, b) => BY[b].p - BY[a].p || BY[b].s - BY[a].s);
+      const st = G.st, h = (st.fb && st.fb.p === G.me ? [st.fb.code] : st.hands[G.me]).slice().sort((a, b) => BY[b].p - BY[a].p || BY[b].s - BY[a].s);
       const myTurn = st.turn === G.me && !st.over && !G.busy;
       const pc = G.prompt && G.prompt.cards;
       return h.map(code => {
@@ -312,7 +312,7 @@
           <section class="card logbox"><h3>บันทึกเกม</h3><ol class="log">${logs || '<li class="muted">ยังไม่มีการเดิน</li>'}</ol></section>
         </aside>
       </div>${end}${modalHtml()}`;
-      if (st.refill && st.refill.at === st.mv && st.refill !== G.refillSeen) { G.refillSeen = st.refill; const r = st.refill; toast(r.p === G.me ? 'มือคุณหมด — คู่ต่อสู้สุ่มการ์ดจาก Void ขึ้นมือให้ 🎴' : 'คู่ต่อสู้มือหมด — คุณสุ่มการ์ดจาก Void ให้เขา 🎴'); }
+      if (st.refill && st.refill.at === st.mv && st.refill !== G.refillSeen) { G.refillSeen = st.refill; const r = st.refill; toast(r.p === G.me ? 'มือคุณหมด — Void Fallback: คู่ต่อสู้สุ่มการ์ดจาก Void ให้คุณ Summon 🎴 ' + BY[r.cards[0]].n : 'คู่ต่อสู้มือหมด — Void Fallback: คุณสุ่มการ์ดจาก Void ให้เขา 🎴 ' + BY[r.cards[0]].n); }
     }
 
     /* ---------- prompts (abilities) ---------- */
