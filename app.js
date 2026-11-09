@@ -290,6 +290,85 @@ function tabSwap(A){
     }).join('')}</div></div>`;
 }
 
+
+/* ---------- เติม Deck อัตโนมัติจากการ์ดตั้งต้น ---------- */
+const AUTO = {style: 'bal', prev: null, n: 0};
+const AUTOSTYLE = {bal: {w: 1, p: .15, d: .1, ws: .35}, atk: {w: .6, p: .3, d: .2, ws: .35}, def: {w: 1.6, p: .1, d: .05, ws: .4}};
+function deckScore(codes, sty){
+  const A = analyze(codes), syn = synergy(A), cs = mandatoryCosts(A);
+  const dirs = DIRS.filter(k => k !== 'c' && A.dir[k] > 0).length;
+  let v = A.rating - sty.w * A.weak * .35 * 2.2 + sty.d * dirs + sty.p * (A.avgP - 6);
+  syn.forEach(x => v += x.ok ? .6 : -1.5);
+  if (cs.length) v -= Math.max(0, cs.length - 1) * .3;
+  const st = A.stars; v += .05 * st; /* ใช้ดาวให้คุ้ม */
+  return v;
+}
+function autoFill(seed, style, noise){
+  const sty = AUTOSTYLE[style] || AUTOSTYLE.bal, rnd = Math.random;
+  const names = new Set(seed.map(x => BY[x].n)), pool = C.filter(c => (c.e !== 'origin' || seed.includes(c.c)) && !seed.includes(c.c));
+  let best = null, bs = -1e9;
+  const minS = Math.min.apply(null, C.map(c => c.s));
+  for (let r = 0; r < 60; r++) {
+    const d = seed.slice(), nm = new Set(names); let st = stats(d), ok = true;
+    while (d.length < DECKSIZE) {
+      const left = DECKSIZE - d.length - 1, base = deckScore(d, sty), cand = [];
+      for (const c of pool) {
+        if (d.includes(c.c) || nm.has(c.n) || st + c.s + left * minS > MAXSTAR) continue;
+        cand.push({c, v: deckScore(d.concat(c.c), sty) - base + (rnd() - .5) * noise * (r ? 1 : 0)});
+      }
+      if (!cand.length) { ok = false; break; }
+      cand.sort((a, b) => b.v - a.v);
+      const k = r === 0 ? 0 : Math.min(cand.length - 1, Math.floor(rnd() * rnd() * 4));
+      d.push(cand[k].c.c); nm.add(cand[k].c.n); st += cand[k].c.s;
+    }
+    if (!ok) continue;
+    /* hill-climb: สลับเฉพาะใบที่ไม่ได้ล็อก */
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (let i = seed.length; i < DECKSIZE; i++) {
+        const rest = d.filter((_, j) => j !== i), rn = new Set(rest.map(x => BY[x].n)), rs = stats(rest);
+        let cur = deckScore(d, sty), bc = d[i];
+        for (const c of pool) {
+          if (c.c === d[i] || d.includes(c.c) || rn.has(c.n) || rs + c.s > MAXSTAR) continue;
+          const nd = rest.slice(); nd.splice(i, 0, c.c); const sc = deckScore(nd, sty);
+          if (sc > cur + 1e-9) { cur = sc; bc = c.c; }
+        }
+        if (bc !== d[i]) { d[i] = bc; moved = true; }
+      }
+      if (!moved) break;
+    }
+    const sc = deckScore(d, sty) + (rnd() - .5) * noise * .3;
+    if (sc > bs) { bs = sc; best = d.slice(); }
+  }
+  return best;
+}
+function doAutoFill(){
+  const re = !!(AUTO.locked && AUTO.prev && S.deck.length === DECKSIZE);
+  const seed = re ? AUTO.locked.slice() : S.deck.slice(0, DECKSIZE);
+  if (!seed.length) { toast('เลือกการ์ดตั้งต้นอย่างน้อย 1 ใบก่อน'); return; }
+  if (seed.length >= DECKSIZE) { toast('Deck ครบ 10 ใบแล้ว'); return; }
+  if (stats(seed) > MAXSTAR) { toast('การ์ดตั้งต้นเกิน 25 ดาวแล้ว'); return; }
+  const d = autoFill(seed, AUTO.style, re ? 1.2 : 0);
+  if (!d) { toast('เติมไม่ได้: การ์ดตั้งต้นใช้ดาวมากเกินไป'); return; }
+  if (!re) { AUTO.prev = S.deck.slice(); AUTO.locked = seed.slice(); }
+  S.deck = d; S.oppTouched = false; save(); renderAll();
+  toast(`เติมครบแล้ว (${stats(d)}★) กด “เติมใหม่” เพื่อสุ่มชุดอื่น`);
+}
+function autoUndo(){ if (!AUTO.prev) return; S.deck = AUTO.prev; AUTO.prev = null; AUTO.locked = null; AUTO.n = 0; save(); renderAll(); }
+function renderAuto(){
+  const d = S.deck, el = $('autoBox'); if (!el) return;
+  const filled = AUTO.locked && d.length === DECKSIZE && AUTO.prev;
+  const can = d.length >= 1 && d.length < DECKSIZE;
+  if (!can && !filled) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="autob"><b>✨ เติม Deck ให้อัตโนมัติ</b>
+    <span class="muted">${filled ? `ล็อกการ์ดตั้งต้น ${AUTO.locked.length} ใบไว้ ที่เหลือระบบเลือกให้` : `ใส่การ์ดตั้งต้น ${d.length} ใบแล้ว ระบบจะเลือกอีก ${DECKSIZE - d.length} ใบให้ (≤${MAXSTAR} ดาว ชื่อไม่ซ้ำ)`}</span>
+    <div class="arow"><select id="autoStyle" aria-label="สไตล์"><option value="bal"${AUTO.style === 'bal' ? ' selected' : ''}>สมดุล</option><option value="atk"${AUTO.style === 'atk' ? ' selected' : ''}>บุกหนัก</option><option value="def"${AUTO.style === 'def' ? ' selected' : ''}>ป้องกันแน่น</option></select>
+    <button class="btn primary" data-act="autofill">${filled ? '🎲 เติมใหม่' : '✨ เติมให้ครบ'}</button>
+    ${AUTO.prev ? '<button class="btn" data-act="autoundo">↩︎ ย้อนกลับ</button>' : ''}</div></div>`;
+}
+document.addEventListener('change', e => { if (e.target.id === 'autoStyle') AUTO.style = e.target.value; });
+
 /* ---------- pool ---------- */
 function reasonBlocked(c){
   const d = S.deck;
@@ -355,6 +434,7 @@ function renderDeck(){
       : `<div class="slot empty-s">ช่องว่าง ${i + 1}<br><small>เลือกจากคลังการ์ด</small></div>`;
   }
   $('slots').innerHTML = html;
+  renderAuto();
 }
 
 /* ---------- analysis ---------- */
@@ -495,6 +575,7 @@ function renderAll(){ renderHeader(); renderPool(); renderDeck(); renderTabs(); 
 
 /* ---------- actions ---------- */
 function toggle(code){
+  AUTO.locked = null; AUTO.prev = null; AUTO.n = 0;
   const d = S.deck, i = d.indexOf(code);
   if (i >= 0) { d.splice(i, 1); toast(`เอา ${BY[code].n} ออก (${d.length}/10)`); }
   else { const why = reasonBlocked(BY[code]); if (why) { toast(why); return; } d.push(code); toast(`เพิ่ม ${BY[code].n} (${d.length}/10 · ${stats(d)}★)`); }
@@ -513,6 +594,8 @@ document.addEventListener('click', ev => {
     S.oppTouched = false; toast('ปรับ Deck แล้ว'); save(); renderAll();
   }
   else if (ds.act === 'simrun') runSim();
+  else if (ds.act === 'autofill') doAutoFill();
+  else if (ds.act === 'autoundo') autoUndo();
   else if (ds.act === 'zoom') zoom(ds.code);
   else if (ds.view) { S.view = ds.view; try { localStorage.setItem('msdb-view', S.view); } catch (e) {} renderPool(); }
   else if (ds.act === 'closezoom') closeZoom();
@@ -530,7 +613,7 @@ $('presetSel').addEventListener('change', e => {
   if (!PRESET[k]) return;
   S.deck = PRESET[k].slice(); S.oppTouched = false; save(); renderAll(); toast('โหลด Deck ตัวอย่างแล้ว');
 });
-$('btnClear').addEventListener('click', () => { S.deck = []; S.oppTouched = false; save(); renderAll(); toast('ล้าง Deck แล้ว'); });
+$('btnClear').addEventListener('click', () => { AUTO.locked = null; AUTO.prev = null; AUTO.n = 0; S.deck = []; S.oppTouched = false; save(); renderAll(); toast('ล้าง Deck แล้ว'); });
 
 function zoom(code){
   const c = BY[code]; if (!c) return;
