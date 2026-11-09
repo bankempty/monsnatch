@@ -15,12 +15,13 @@
   const cellName = i => (NAMER ? NAMER(i) : rawName(i));
   const RULES_NOTE = [
     'กระดาน Arena 4×4 ผู้เล่นผลัดกัน summon การ์ด 1 ใบจากมือลงช่องว่าง (มือเริ่มต้น = เด็ค 10 ใบ)',
-    'หลัง summon: ทำ On Summon → Snatch Check ตามทิศ Snatch Sight (ช่องติดกัน 1 ช่อง; "ข้างหน้า" = ทางฝั่งตรงข้าม) → On Snatch',
+    'หลัง Summon: ทำ On Summon → Snatch Check ตามทิศ Snatch-Sight (ช่องติดกัน; "ข้างหน้า" = ทางฝั่งตรงข้าม) → On Snatch',
     'Snatch สำเร็จเมื่อ Power ฝั่งบุก "สูงกว่า" ฝั่งรับ (เท่ากันไม่สำเร็จ) หรือมี Element Advantage (ตั้งค่าได้) และเป้าหมายไม่มี Ward',
     'Snatch จากความสามารถ (On Summon/On Snatch/…) ข้ามการเทียบ Power/ธาตุ แต่ยังโดน Ward และข้อห้ามต่าง ๆ',
     'Snatch = พลิก Marking Token ให้เป็นฝั่งเรา ไม่ลูกโซ่ต่อ (ลูกโซ่เกิดจาก Incite เท่านั้น)',
     'จบเกมเมื่อ Arena เต็ม (หรือไม่มีใครมีการ์ดให้ลงอีก) คนคุมการ์ดมากกว่าชนะ เท่ากัน = คนถือ First Player Token ชนะ',
-    'กฎ Void: ถึงตาใครแล้วมือหมดแต่ Void ยังมีการ์ด คู่ต่อสู้สุ่มการ์ดจาก Void ของคนนั้นขึ้นมือให้ 1 ใบ (ปรับได้ที่ rules.vd) — เป็นการตีความจากฟีดแบ็กผู้เล่น ยังไม่ยืนยันกับกติกาทางการ',
+    '9.2 Void Fallback: ถึงเทิร์นแล้วมือหมดแต่ Void ยังมีการ์ด → คู่แข่งสุ่มการ์ดคว่ำหน้าจาก Void ให้ 1 ใบ เจ้าของเทิร์นต้อง Summon ใบนั้นลงช่องว่างที่เลือก (On Summon + Snatch Check ปกติ) ถ้าทั้งมือและ Void ว่าง เทิร์นนั้นไม่ Summon',
+    '9.3.5 Summon จากความสามารถ (เช่น CATULA) ไม่ทำ Snatch Check อัตโนมัติ; Move/Swap ก็ไม่ทำ Snatch Check ยกเว้นมี Incite',
     'ความสามารถที่ให้ "ฝ่ายตรงข้ามเลือกการ์ด" ระบบจะเลือกใบที่อ่อนที่สุดให้โดยอัตโนมัติ',
   ];
 
@@ -83,7 +84,7 @@
     const st = {
       board: Array(SZ).fill(null), hands: [o.decks[0].slice(), o.decks[1].slice()], voids: [[], []],
       start: o.start | 0, tok: o.start | 0, mv: 0, turn: o.start | 0, rng: (o.seed | 0) || 1,
-      rules: Object.assign({ elem: true }, o.rules || {}), shield: [-1, -1], ret: [], q: [], nid: 1,
+      rules: Object.assign({ elem: true }, o.rules || {}), shield: [-1, -1], ret: [], q: [], nid: 1, fb: null,
       over: false, res: null, log: [], fx: [], last: null,
     };
     return st;
@@ -92,7 +93,7 @@
     return {
       board: st.board.map(c => c && Object.assign({}, c, { sl: c.sl.slice() })), hands: [st.hands[0].slice(), st.hands[1].slice()],
       voids: [st.voids[0].slice(), st.voids[1].slice()], start: st.start, tok: st.tok, mv: st.mv, turn: st.turn, rng: st.rng,
-      rules: st.rules, shield: st.shield.slice(), ret: st.ret.map(x => Object.assign({}, x)), q: [], nid: st.nid,
+      rules: st.rules, shield: st.shield.slice(), ret: st.ret.map(x => Object.assign({}, x)), q: [], nid: st.nid, fb: st.fb && Object.assign({}, st.fb),
       over: st.over, res: st.res, log: [], fx: [], last: null, quiet: true,
     };
   }
@@ -192,16 +193,16 @@
   }
   function swapCells(st, i, j) { const t = st.board[i]; st.board[i] = st.board[j]; st.board[j] = t; fx(st, 'move', i); fx(st, 'move', j); }
 
-  function* summon(st, p, code, x, depth) {
+  function* summon(st, p, code, x, depth, eff) {
     const hi = st.hands[p].indexOf(code); if (hi < 0) throw new Error('card not in hand');
     if (st.board[x]) throw new Error('cell occupied');
     st.hands[p].splice(hi, 1);
     st.board[x] = { c: code, o: p, k: p, w: 0, t: st.mv, sn: 0, noSn: -1, u: false, id: st.nid++, sl: [] };
     say(st, `${PN[p]} summon ${cn(code)} ที่ ${cellName(x)}`); fx(st, 'place', x);
-    const ab = AB[code]; let idx = x;
+    const ab = AB[code], myId = st.board[x].id; let idx = x;
     if (ab.sum) idx = yield* runList(st, x, ab.sum, depth, {});
     yield* flushBack(st, depth);
-    if (st.board[idx] && st.board[idx].id) {
+    if (!eff && st.board[idx] && st.board[idx].id === myId) { /* 9.3.5: Summon จากความสามารถไม่ทำ Snatch Check */
       yield* resolveMain(st, idx);
       yield* flushBack(st, depth);
       const cur = st.board[idx];
@@ -293,7 +294,7 @@
     if ((m = L.match(/^reveal 1 \[(\w)\] momon from your hand(?: and put it into your void| into your void)$/))) {
       const el = EL[m[1].toUpperCase()]; const opts = handOf(st, X.p, el);
       if (!opts.length) { X.did = false; return; }
-      const r = yield ask(X, 'card', 'cost', opts.map(c => ({ c })), opt, `เปิดการ์ดธาตุ ${el} จากมือลง Void`);
+      const r = yield ask(X, 'card', 'cost', opts.map(c => ({ c })), true, `เปิดการ์ดธาตุ ${el} จากมือลง Void`);
       if (r < 0) { X.did = false; return; }
       st.hands[X.p].splice(st.hands[X.p].indexOf(opts[r]), 1); st.voids[X.p].push(opts[r]); X.rev = opts[r]; X.did = true;
       say(st, `เปิด ${cn(opts[r])} จากมือลง Void`); return;
@@ -351,13 +352,13 @@
     }
 
     /* --- move --- */
-    if ((m = L.match(/^move (.*?) to (.*?)( and i may snatch them)?$/))) {
+    if ((m = L.match(/^move (.*?) to (?:any )?empty spaces? ?(.*?)( and i may snatch them)?$/))) {
       const f = parseF(m[1]); f.rng = 0; if (f.side === 'any') f.side = 'a';
       if (/^another/.test(m[1])) f.excl = true;
       const dr = /within 1 space of me/.test(m[2]) ? 1 : 0; const moved = [];
       for (let k = 0, mx = f.n; k < mx; k++) {
         const ts = cellsWhere(st, j => cellOk(st, X, f, j) && !moved.includes(st.board[j].id) && cellsWhere(st, d => !st.board[d] && (!dr || (d !== X.idx && dist(X.idx, d) === 1))).length > 0);
-        const j = yield* pickCells(st, X, ts, opt || k > 0, 'move', 'เลือกการ์ดที่จะย้าย'); if (j < 0) break;
+        const j = yield* pickCells(st, X, ts, opt || f.up || k > 0, 'move', 'เลือกการ์ดที่จะย้าย'); if (j < 0) break;
         const ds = cellsWhere(st, d => !st.board[d] && (!dr || (d !== X.idx && dist(X.idx, d) === 1)));
         const d = yield* pickCells(st, X, ds, false, 'dest', 'เลือกช่องว่างปลายทาง');
         const card = st.board[j]; st.board[d] = card; st.board[j] = null; moved.push(card.id); fx(st, 'move', d); say(st, `ย้าย ${cn(card.c)} ${cellName(j)} → ${cellName(d)}`);
@@ -388,7 +389,7 @@
       const opts = handOf(st, X.p, el, c => c.s <= mx); if (!opts.length) return;
       const r = yield ask(X, 'card', 'summon', opts.map(c => ({ c })), true, `เลือกการ์ดธาตุ ${el} (≤${mx}★) ที่จะ summon`);
       if (r < 0) return;
-      yield* summon(st, X.p, opts[r], X.free, X.depth + 1); return;
+      yield* summon(st, X.p, opts[r], X.free, X.depth + 1, true); return;
     }
 
     /* --- snatch (ability) --- */
@@ -414,14 +415,14 @@
     if (st.board.every(c => c)) return true;
     return !st.hands[0].length && !st.hands[1].length && !st.ret.length && !st.voids[0].length && !st.voids[1].length;
   }
-  /* กฎ Void: ถ้าถึงตาเราแล้วมือหมด แต่ Void ยังมีการ์ด → คู่ต่อสู้สุ่มการ์ดจาก Void ของเราขึ้นมือให้ (ค่าเริ่มต้น 1 ใบ) */
-  function voidRefill(st) {
-    const p = st.turn, v = st.voids[p]; if (st.hands[p].length || !v.length || st.ret.some(r => r.p === p)) return false;
-    const n = Math.max(1, Math.min(v.length, (st.rules.vd | 0) || 1)), got = [];
-    for (let i = 0; i < n; i++) { const k = Math.floor(rnd(st) * v.length); got.push(v.splice(k, 1)[0]); }
-    st.hands[p].push(...got); st.last = null;
-    st.refill = { p, cards: got.slice(), at: st.mv };
-    say(st, `${PN[1 - p]} สุ่มการ์ดจาก Void ของ ${PN[p]} ขึ้นมือ: ${got.map(cn).join(', ')}`);
+  /* 9.2 Void Fallback Summon: เจ้าของเทิร์นไม่มีการ์ดในมือแต่ Void ยังมี → คู่แข่งสุ่มการ์ดคว่ำหน้า 1 ใบจาก Void
+     การ์ดนั้นถูก Reveal แล้วเจ้าของเทิร์น "ต้อง" Summon ลงช่องว่างที่เลือก (On Summon + Snatch Check ตามปกติ) ไม่ผ่านมือ */
+  function voidFallback(st) {
+    const p = st.turn, v = st.voids[p]; st.fb = null;
+    if (st.hands[p].length || !v.length || st.ret.some(r => r.p === p)) return false;
+    const k = Math.floor(rnd(st) * v.length), code = v.splice(k, 1)[0];
+    st.fb = { p, code }; st.last = null; st.refill = { p, cards: [code], at: st.mv };
+    say(st, `${PN[1 - p]} สุ่มการ์ดจาก Void ของ ${PN[p]}: ${cn(code)} (Void Fallback Summon)`);
     return true;
   }
   function finish(st) {
@@ -433,8 +434,8 @@
     for (let i = 0; i < st.ret.length;) { const r = st.ret[i]; if (r.at === st.mv) { st.hands[r.p].push(r.code); st.ret.splice(i, 1); } else i++; }
     st.mv++; st.turn = (st.start + st.mv) % 2;
     if (endCheck(st)) { finish(st); return; }
-    voidRefill(st);
-    if (!st.hands[st.turn].length) { say(st, `${PN[st.turn]} ไม่มีการ์ดให้ลง (ข้ามเทิร์น)`); advance(st); }
+    voidFallback(st);
+    if (!st.hands[st.turn].length && !st.fb) { say(st, `${PN[st.turn]} ไม่มีการ์ดให้ลง (ข้ามเทิร์น)`); advance(st); }
   }
   function endOfTurn(st) {
     const n = st.board.filter(Boolean).length;
@@ -442,12 +443,13 @@
   }
   function legal(st) {
     if (st.over) return []; const o = [];
-    for (const code of [...new Set(st.hands[st.turn])]) for (let x = 0; x < SZ; x++) if (!st.board[x]) o.push({ c: code, x });
+    for (const code of (st.fb ? [st.fb.code] : [...new Set(st.hands[st.turn])])) for (let x = 0; x < SZ; x++) if (!st.board[x]) o.push({ c: code, x });
     return o;
   }
   /** generator version: yields prompts. Returns when the turn is fully resolved. */
   function* applyG(st, mv) {
     if (st.over) throw new Error('game over');
+    if (st.fb) { if (mv.c !== st.fb.code) throw new Error('must summon fallback card'); st.hands[st.turn].push(st.fb.code); st.fb = null; }
     if (!st.hands[st.turn].includes(mv.c)) throw new Error('card not in hand');
     if (mv.x < 0 || mv.x >= SZ || st.board[mv.x]) throw new Error('bad cell');
     st.fx = []; st.log = st.log.slice(-200);
