@@ -494,3 +494,9 @@ body{background:radial-gradient(1200px 500px at 85% -10%,color-mix(in srgb,var(-
 .chips li{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
 .chips li.good{border-color:color-mix(in srgb,var(--good) 55%,var(--line));color:var(--good)}
 .chips li.warn{border-color:color-mix(in srgb,#E6A700 60%,var(--line))}
+
+/* auto-fill */
+#autoBox{margin:0 0 10px}
+.autob{border:1px solid var(--line,#d6d9e0);border-radius:12px;padding:10px 12px;background:var(--card,#fff);display:grid;gap:6px}
+.autob .arow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.autob select{width:auto}
