@@ -369,6 +369,40 @@ function renderAuto(){
 }
 document.addEventListener('change', e => { if (e.target.id === 'autoStyle') AUTO.style = e.target.value; });
 
+
+/* ---------- บันทึก Deck เป็นรูป (วาดด้วย canvas ไม่ใช้รูปการ์ดจากเว็บอื่น) ---------- */
+const ELCOL = {fire:'#D2441C',water:'#1E6FD9',earth:'#8A6A2F',air:'#7A8CC7',thunder:'#9BA400',ice:'#2AA3C9',nature:'#2E8B3E',poison:'#9C3FC2',metal:'#667784',spirit:'#B2457F',light:'#D98E04',dark:'#5E5470',origin:'#888888'};
+function shareImage(){
+  const d = S.deck; if (!d.length) { toast('ยังไม่มีการ์ดใน Deck'); return; }
+  const A = analyze(d), W = 1200, H = 760, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d'), F = 'system-ui,"Noto Sans Thai",Tahoma,sans-serif';
+  x.fillStyle = '#12151c'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#fff'; x.font = `700 38px ${F}`; x.fillText((nameDraft || 'Monsnatch Deck'), 40, 30 + 38);
+  x.fillStyle = '#9aa4b2'; x.font = `22px ${F}`; x.fillText(`${d.length}/${DECKSIZE} ใบ · ${A.stars}/${MAXSTAR} ★ · พลังเฉลี่ย ${A.avgP.toFixed(1)} · คะแนนประเมิน ${Math.round(A.rating / BENCH * 100)}%`, 40, 112);
+  const cw = 216, ch = 150, gx = 16, gy = 14, x0 = 40, y0 = 140;
+  d.forEach((code, i) => {
+    const c = BY[code], col = i % 5, row = (i / 5) | 0, cx = x0 + col * (cw + gx), cy = y0 + row * (ch + gy);
+    x.fillStyle = '#1e232d'; x.beginPath(); x.roundRect(cx, cy, cw, ch, 12); x.fill();
+    x.fillStyle = ELCOL[c.e] || '#888'; x.beginPath(); x.roundRect(cx, cy, 10, ch, [12, 0, 0, 12]); x.fill();
+    x.fillStyle = '#fff'; x.font = `700 24px ${F}`; x.fillText(c.n, cx + 24, cy + 38);
+    x.fillStyle = ELCOL[c.e]; x.font = `600 18px ${F}`; x.fillText(ELN[c.e][0], cx + 24, cy + 64);
+    x.fillStyle = '#e6e9ef'; x.font = `700 34px ${F}`; x.fillText('P' + c.p, cx + 24, cy + 108);
+    x.fillStyle = '#ffc94d'; x.font = `600 22px ${F}`; x.fillText('★'.repeat(c.s), cx + 100, cy + 106);
+    /* เข็มทิศ Snatch Sight 3x3 */
+    const gx0 = cx + cw - 58, gy0 = cy + 14;
+    DIRS.forEach((k, j) => { const r = (j / 3) | 0, q = j % 3; x.fillStyle = k === 'c' ? '#3a4150' : c.d.includes(k) ? '#ff6b57' : '#2c3240'; x.fillRect(gx0 + q * 15, gy0 + r * 15, 12, 12); });
+    x.fillStyle = '#9aa4b2'; x.font = `16px ${F}`; x.fillText(c.a ? 'มีความสามารถ' : '', cx + 24, cy + 136);
+  });
+  /* แถบธาตุที่ชนะ/แพ้ */
+  const by = y0 + 2 * (ch + gy) + 18; x.fillStyle = '#9aa4b2'; x.font = `600 20px ${F}`; x.fillText('ชนะ/แพ้ รายธาตุ (ใบที่ชนะ − ใบที่แพ้)', 40, by + 20);
+  EL.forEach((e, i) => { const n = A.net[e], bx = 40 + i * 94, byy = by + 34;
+    x.fillStyle = n > 0 ? '#1f5b3a' : n < 0 ? '#6b2a2a' : '#2c3240'; x.beginPath(); x.roundRect(bx, byy, 86, 62, 10); x.fill();
+    x.fillStyle = ELCOL[e]; x.font = `700 17px ${F}`; x.fillText(ELN[e][0], bx + 8, byy + 24);
+    x.fillStyle = '#fff'; x.font = `700 24px ${F}`; x.fillText((n > 0 ? '+' : '') + n, bx + 8, byy + 52); });
+  x.fillStyle = '#6b7482'; x.font = `18px ${F}`; x.fillText('Monsnatch Deck Builder · เครื่องมือแฟนเกม', 40, H - 22);
+  cv.toBlob(b => { if (!b) { toast('สร้างรูปไม่สำเร็จ'); return; } const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'monsnatch-deck.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('บันทึกรูป Deck แล้ว'); }, 'image/png');
+}
+
 /* ---------- pool ---------- */
 function reasonBlocked(c){
   const d = S.deck;
@@ -595,6 +629,7 @@ document.addEventListener('click', ev => {
   }
   else if (ds.act === 'simrun') runSim();
   else if (ds.act === 'autofill') doAutoFill();
+  else if (ds.act === 'shareimg') shareImage();
   else if (ds.act === 'autoundo') autoUndo();
   else if (ds.act === 'zoom') zoom(ds.code);
   else if (ds.view) { S.view = ds.view; try { localStorage.setItem('msdb-view', S.view); } catch (e) {} renderPool(); }
