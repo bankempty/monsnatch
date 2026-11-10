@@ -500,3 +500,7 @@ body{background:radial-gradient(1200px 500px at 85% -10%,color-mix(in srgb,var(-
 .autob{border:1px solid var(--line,#d6d9e0);border-radius:12px;padding:10px 12px;background:var(--card,#fff);display:grid;gap:6px}
 .autob .arow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .autob select{width:auto}
+/* replay / stats / how-to */
+.rpbar{flex-wrap:wrap;gap:6px}
+.statl{margin:6px 0 0;font-size:13px}
+.howto{padding-left:20px;display:grid;gap:8px;line-height:1.55}
