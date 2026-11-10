@@ -87,6 +87,7 @@
       rules: Object.assign({ elem: true }, o.rules || {}), shield: [-1, -1], ret: [], q: [], nid: 1, fb: null,
       over: false, res: null, log: [], fx: [], last: null,
     };
+    if (o.keep) { st.keep = true; st.snaps = []; }
     return st;
   }
   function clone(st) {
@@ -330,7 +331,11 @@
       if (X.rnd) { const v = st.voids[X.rnd.p]; v.splice(v.lastIndexOf(X.rnd.code), 1); st.ret.push({ p: X.rnd.p, code: X.rnd.code, at: st.mv + 1 }); } return;
     }
     if (/^your opponent chooses 1 card from their hand and puts it into their void/.test(L)) {
-      const o = 1 - X.p; if (!st.hands[o].length) return; const code = weakest(st, o);
+      const o = 1 - X.p; if (!st.hands[o].length) return;
+      /* ฝ่ายตรงข้ามเป็นคนเลือกเอง (prompt.who = ฝ่ายตรงข้าม); ถ้าไม่มีคนตอบจริง autoChooser จะเลือกใบที่อ่อนสุด */
+      const opts = [...new Set(st.hands[o])].map(c => ({ c }));
+      const r = yield { who: o, kind: 'card', act: 'oppdiscard', opts, optional: false, text: 'ฝ่ายตรงข้ามสั่งให้คุณเลือกการ์ด 1 ใบจากมือใส่ Void', src: X.idx };
+      const code = opts[r >= 0 && r < opts.length ? r : 0].c;
       st.hands[o].splice(st.hands[o].indexOf(code), 1); st.voids[o].push(code); say(st, `${PN[o]} ทิ้ง ${cn(code)} ลง Void`); return;
     }
 
@@ -453,6 +458,7 @@
     if (!st.hands[st.turn].includes(mv.c)) throw new Error('card not in hand');
     if (mv.x < 0 || mv.x >= SZ || st.board[mv.x]) throw new Error('bad cell');
     st.fx = []; st.log = st.log.slice(-200);
+    if (st.keep) { const { snaps, ...rest } = st; snaps.push(JSON.stringify(rest)); } /* เก็บภาพสถานะก่อนเดินไว้ดูย้อนหลัง (เฉพาะเกมที่เปิด keep) */
     const p = st.turn;
     yield* summon(st, p, mv.c, mv.x, 0);
     endOfTurn(st);
