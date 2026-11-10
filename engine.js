@@ -21,7 +21,8 @@
     'Snatch = พลิก Marking Token ให้เป็นฝั่งเรา ไม่ลูกโซ่ต่อ (ลูกโซ่เกิดจาก Incite เท่านั้น)',
     'จบเกมเมื่อ Arena เต็ม (หรือไม่มีใครมีการ์ดให้ลงอีก) คนคุมการ์ดมากกว่าชนะ เท่ากัน = คนถือ First Player Token ชนะ',
     '9.2 Void Fallback: ถึงเทิร์นแล้วมือหมดแต่ Void ยังมีการ์ด → คู่แข่งสุ่มการ์ดคว่ำหน้าจาก Void ให้ 1 ใบ เจ้าของเทิร์นต้อง Summon ใบนั้นลงช่องว่างที่เลือก (On Summon + Snatch Check ปกติ) ถ้าทั้งมือและ Void ว่าง เทิร์นนั้นไม่ Summon',
-    '9.3.5 Summon จากความสามารถ (เช่น CATULA) ไม่ทำ Snatch Check อัตโนมัติ; Move/Swap ก็ไม่ทำ Snatch Check ยกเว้นมี Incite',
+    '9.3/10.1.1 Summon จากความสามารถ (เช่น CATULA) ทำ Snatch Check ด้วย (On Snatch ทำงานได้) แต่ชุด On Summon → Snatch Check จะถูกเลื่อนไว้จนความสามารถและชุดปัจจุบันจบก่อน และ Snatch Check นี้ถือว่า "เกิดจากความสามารถ" (โดนข้อห้าม can’t be snatched by abilities ได้)',
+    '12.2.4/13.1 Move และ Swap ไม่ทำ Snatch Check เว้นแต่มี Incite; Incite ไม่ใช่ Summon ไม่ทริกเกอร์ On Summon/On Snatch แต่โดนข้อห้าม Snatch จากความสามารถ; Snatch Check ปกติของเทิร์นไม่โดน',
     'ความสามารถที่ให้ "ฝ่ายตรงข้ามเลือกการ์ด" ระบบจะเลือกใบที่อ่อนที่สุดให้โดยอัตโนมัติ',
   ];
 
@@ -84,7 +85,7 @@
     const st = {
       board: Array(SZ).fill(null), hands: [o.decks[0].slice(), o.decks[1].slice()], voids: [[], []],
       start: o.start | 0, tok: o.start | 0, mv: 0, turn: o.start | 0, rng: (o.seed | 0) || 1,
-      rules: Object.assign({ elem: true }, o.rules || {}), shield: [-1, -1], ret: [], q: [], nid: 1, fb: null,
+      rules: Object.assign({ elem: true }, o.rules || {}), shield: [-1, -1], ret: [], q: [], nid: 1, fb: null, defer: [], inDrain: false,
       over: false, res: null, log: [], fx: [], last: null,
     };
     if (o.keep) { st.keep = true; st.snaps = []; }
@@ -94,7 +95,7 @@
     return {
       board: st.board.map(c => c && Object.assign({}, c, { sl: c.sl.slice() })), hands: [st.hands[0].slice(), st.hands[1].slice()],
       voids: [st.voids[0].slice(), st.voids[1].slice()], start: st.start, tok: st.tok, mv: st.mv, turn: st.turn, rng: st.rng,
-      rules: st.rules, shield: st.shield.slice(), ret: st.ret.map(x => Object.assign({}, x)), q: [], nid: st.nid, fb: st.fb && Object.assign({}, st.fb),
+      rules: st.rules, shield: st.shield.slice(), ret: st.ret.map(x => Object.assign({}, x)), q: [], nid: st.nid, fb: st.fb && Object.assign({}, st.fb), defer: [], inDrain: false,
       over: st.over, res: st.res, log: [], fx: [], last: null, quiet: true,
     };
   }
@@ -120,7 +121,7 @@
     }
     return v;
   }
-  function beats(a, d) { const A = CARD[a], D = CARD[d]; return (A.b || []).includes(D.e) || (D.e === 'origin' && A.e !== 'origin'); }
+  function beats(a, d) { const A = CARD[a], D = CARD[d]; return !!((A.b || []).includes(D.e) || (AB[d].s.adv && D.e === 'origin' && A.e !== 'origin')); }
   function warded(st, c) { return c.w > 0 && c.w >= st.mv; }
   function immune(st, a, d, byAb) {
     const A = st.board[a], D = st.board[d], s = AB[D.c].s;
@@ -133,8 +134,8 @@
     if (byAb && st.shield[D.k] >= st.mv) return 'shield';
     return null;
   }
-  function canMain(st, a, d) {
-    if (immune(st, a, d, false)) return false;
+  function canMain(st, a, d, byAb) {
+    if (immune(st, a, d, !!byAb)) return false;
     const A = st.board[a], D = st.board[d], s = AB[A.c].s;
     const pa = pw(st, a), pd = pw(st, d);
     if (pa > pd) return true;
@@ -146,8 +147,8 @@
   /** preview for UI: which enemy cells would be snatched if `code` were summoned at `x` by p (ignores abilities) */
   function previewSnatch(st, p, code, x) {
     const t = clone(st); t.board[x] = { c: code, o: p, k: p, w: 0, t: st.mv, sn: 0, noSn: -1, u: false, id: 9999, sl: [] };
-    const out = []; for (const d of CARD[code].d) { const j = step(x, d, p); if (j >= 0 && t.board[j] && t.board[j].k !== p && canMain(t, x, j)) out.push(j); }
-    if (out.length > 1) return out.filter(j => !AB[t.board[j].c].s.tog || t.board[j].k !== t.board[j].o);
+    const out = [], init = []; for (const d of CARD[code].d) { const j = step(x, d, p); if (j >= 0 && t.board[j] && t.board[j].k !== p && !init.includes(j)) { init.push(j); if (canMain(t, x, j)) out.push(j); } }
+    if (init.length > 1) return out.filter(j => !AB[t.board[j].c].s.tog || t.board[j].k !== t.board[j].o);
     return out;
   }
 
@@ -163,12 +164,13 @@
     }
     return n;
   }
-  function* resolveMain(st, idx) {
+  /* byAb: Snatch Check ที่เกิดจากความสามารถ (Incite / Summon จากความสามารถ) → โดนข้อห้าม 'can't be snatched by abilities' (10.2.2) ส่วน Snatch Check ประจำเทิร์นไม่โดน */
+  function* resolveMain(st, idx, byAb) {
     const me = st.board[idx]; if (!me || me.noSn === st.mv) return 0;
     const ts = [];
     for (const d of CARD[me.c].d) { const j = step(idx, d, me.k); if (j >= 0 && st.board[j] && st.board[j].k !== me.k && !ts.includes(j)) ts.push(j); }
-    let ok = ts.filter(j => canMain(st, idx, j));
-    if (ok.length > 1) ok = ok.filter(j => !(AB[st.board[j].c].s.tog && st.board[j].k === st.board[j].o));
+    let ok = ts.filter(j => canMain(st, idx, j, byAb));
+    if (ts.length > 1) ok = ok.filter(j => !(AB[st.board[j].c].s.tog && st.board[j].k === st.board[j].o)); /* 10.1.4: นับจากชุดผู้เข้าข่ายเบื้องต้น แม้ตัวอื่นจะมี Ward */
     return doSnatch(st, idx, ok, 'ยึด');
   }
   function* flushBack(st, depth) {
@@ -183,7 +185,7 @@
   function* incite(st, idx, depth) {
     const c = st.board[idx]; if (!c) return;
     say(st, `Incite ${cn(c.c)} (${cellName(idx)})`); fx(st, 'incite', idx);
-    yield* resolveMain(st, idx);
+    yield* resolveMain(st, idx, true);
     yield* flushBack(st, depth);
   }
   function* afterMove(st, list, srcId) { // list of [idx]
@@ -194,20 +196,32 @@
   }
   function swapCells(st, i, j) { const t = st.board[i]; st.board[i] = st.board[j]; st.board[j] = t; fx(st, 'move', i); fx(st, 'move', j); }
 
+  /* Summon: วางการ์ดลงช่อง แล้วทำ "ชุดการประมวลผล" = On Summon → Snatch Check → On Snatch (9.3, 10.1.1, 10.3.3)
+     - Summon ประจำเทิร์น: ทำชุดนั้นทันที (Snatch Check ปกติ ไม่โดนข้อห้ามจากความสามารถ)
+     - Summon จากความสามารถ (eff): วางทันที แต่ชุดการประมวลผลถูกเลื่อนไว้จนชุดปัจจุบันจบ (11.2.5, 11.4.10) แล้วทำ Snatch Check แบบ "เกิดจากความสามารถ" */
+  function* pkg(st, idx, depth, byAb) {
+    const code = st.board[idx].c, myId = st.board[idx].id, ab = AB[code];
+    if (ab.sum) idx = yield* runList(st, idx, ab.sum, depth, {});
+    yield* flushBack(st, depth);
+    if (st.board[idx] && st.board[idx].id === myId) {
+      yield* resolveMain(st, idx, byAb);
+      yield* flushBack(st, depth);
+      const cur = st.board[idx];
+      if (cur && cur.sn > 0 && AB[cur.c].snt) { idx = yield* runList(st, idx, AB[cur.c].snt, depth, {}); yield* flushBack(st, depth); }
+    }
+  }
   function* summon(st, p, code, x, depth, eff) {
     const hi = st.hands[p].indexOf(code); if (hi < 0) throw new Error('card not in hand');
     if (st.board[x]) throw new Error('cell occupied');
     st.hands[p].splice(hi, 1);
     st.board[x] = { c: code, o: p, k: p, w: 0, t: st.mv, sn: 0, noSn: -1, u: false, id: st.nid++, sl: [] };
     say(st, `${PN[p]} summon ${cn(code)} ที่ ${cellName(x)}`); fx(st, 'place', x);
-    const ab = AB[code], myId = st.board[x].id; let idx = x;
-    if (ab.sum) idx = yield* runList(st, x, ab.sum, depth, {});
-    yield* flushBack(st, depth);
-    if (!eff && st.board[idx] && st.board[idx].id === myId) { /* 9.3.5: Summon จากความสามารถไม่ทำ Snatch Check */
-      yield* resolveMain(st, idx);
-      yield* flushBack(st, depth);
-      const cur = st.board[idx];
-      if (cur && cur.sn > 0 && AB[cur.c].snt) { idx = yield* runList(st, idx, AB[cur.c].snt, depth, {}); yield* flushBack(st, depth); }
+    if (eff) { st.defer.push({ id: st.board[x].id }); return; }
+    yield* pkg(st, x, depth, false);
+    if (!st.inDrain) { /* ชุดที่เลื่อนไว้ทำตามลำดับเข้าก่อนออกก่อน หลังชุดปัจจุบันจบ */
+      st.inDrain = true;
+      try { while (st.defer.length) { const d = st.defer.shift(), i = st.board.findIndex(c => c && c.id === d.id); if (i >= 0) yield* pkg(st, i, 1, true); } }
+      finally { st.inDrain = false; }
     }
   }
 
@@ -361,15 +375,19 @@
       const f = parseF(m[1]); f.rng = 0; if (f.side === 'any') f.side = 'a';
       if (/^another/.test(m[1])) f.excl = true;
       const dr = /within 1 space of me/.test(m[2]) ? 1 : 0; const moved = [];
+      /* 12.2.2: เลือกการ์ดและปลายทางทั้งหมดก่อน (ปลายทางต้องว่างในสถานะก่อนย้าย ไม่ซ้ำกัน และช่องเดิมของการ์ดอีกใบไม่ใช่ปลายทางว่าง) แล้วจึงย้ายพร้อมกัน */
+      const empt = cellsWhere(st, d => !st.board[d] && (!dr || (d !== X.idx && dist(X.idx, d) === 1))), plan = [];
       for (let k = 0, mx = f.n; k < mx; k++) {
-        const ts = cellsWhere(st, j => cellOk(st, X, f, j) && !moved.includes(st.board[j].id) && cellsWhere(st, d => !st.board[d] && (!dr || (d !== X.idx && dist(X.idx, d) === 1))).length > 0);
+        const free = empt.filter(d => !plan.some(q => q.d === d));
+        const ts = free.length ? cellsWhere(st, j => cellOk(st, X, f, j) && !plan.some(q => q.j === j)) : [];
         const j = yield* pickCells(st, X, ts, opt || f.up || k > 0, 'move', 'เลือกการ์ดที่จะย้าย'); if (j < 0) break;
-        const ds = cellsWhere(st, d => !st.board[d] && (!dr || (d !== X.idx && dist(X.idx, d) === 1)));
-        const d = yield* pickCells(st, X, ds, false, 'dest', 'เลือกช่องว่างปลายทาง');
-        const card = st.board[j]; st.board[d] = card; st.board[j] = null; moved.push(card.id); fx(st, 'move', d); say(st, `ย้าย ${cn(card.c)} ${cellName(j)} → ${cellName(d)}`);
-        if (X.idx === j) X.idx = d;
-        yield* afterMove(st, [d], X.id);
+        const d = yield* pickCells(st, X, free, false, 'dest', 'เลือกช่องว่างปลายทาง');
+        if (d < 0) break; plan.push({ j, d });
       }
+      const cards = plan.map(q => st.board[q.j]);
+      plan.forEach(q => { st.board[q.j] = null; });
+      plan.forEach((q, n) => { const card = cards[n]; st.board[q.d] = card; moved.push(card.id); fx(st, 'move', q.d); say(st, `ย้าย ${cn(card.c)} ${cellName(q.j)} → ${cellName(q.d)}`); if (X.idx === q.j) X.idx = q.d; });
+      if (plan.length) yield* afterMove(st, plan.map(q => q.d), X.id);
       X.did = moved.length > 0;
       if (m[3] && moved.length) {
         for (const id of moved) {
