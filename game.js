@@ -20,7 +20,7 @@
     const saveOpt = () => store.set(OPT_KEY, opt);
 
     /* ---------- global game state ---------- */
-    const G = { screen: 'lobby', mode: null, st: null, me: 0, names: ['คุณ', 'คู่ต่อสู้'], sel: null, tgt: null, inspect: null, prompt: null, busy: false,
+    const G = { rmTok: 0, rmWait: false, rp: null, screen: 'lobby', mode: null, st: null, me: 0, names: ['คุณ', 'คู่ต่อสู้'], sel: null, tgt: null, inspect: null, prompt: null, busy: false,
       fxN: 0, o: null, applied: 0, pollTok: 0, netErr: 0, endInfo: null, err: '', info: '', opp_age: 0, rooms: [], roomsTok: 0, thinking: false, rematch: false };
 
     /* ---------- util ---------- */
@@ -107,11 +107,29 @@
       return renderGame();
     }
 
+    /* ---------- สถิติ Deck (เก็บในเบราว์เซอร์) ---------- */
+    const STAT_KEY = 'ms-stats';
+    const deckSig = d => d.slice().sort().join(',');
+    function statOf(d) { const s = store.get(STAT_KEY, {})[deckSig(d)]; return s || { bot: [0, 0], on: [0, 0] }; }
+    function recordResult(won) {
+      const all = store.get(STAT_KEY, {}), k = deckSig(G.mode === 'online' && G.o && G.o.setup ? G.o.setup.decks[G.me] : myDeck()); const s = all[k] || { bot: [0, 0], on: [0, 0] };
+      s[G.mode === 'online' ? 'on' : 'bot'][won ? 0 : 1]++; all[k] = s; store.set(STAT_KEY, all);
+    }
+    function checkRecord() {
+      const st = G.st; if (!st || G.rp || !(st.over || G.endInfo)) return;
+      const id = G.mode === 'online' && G.o ? 'o' + G.o.id : st; if (G.recFor === id) return; G.recFor = id;
+      const w = st.over ? st.res.w : G.endInfo.w; recordResult(w === G.me);
+    }
+    function statLine(d) {
+      const s = statOf(d), f = x => x[0] + x[1] ? `ชนะ ${x[0]} · แพ้ ${x[1]} (${Math.round(x[0] / (x[0] + x[1]) * 100)}%)` : 'ยังไม่เคยเล่น';
+      return `<p class="muted statl">สถิติเด็คนี้ — เจอบอท: ${f(s.bot)} · ออนไลน์: ${f(s.on)}</p>`;
+    }
     function deckStrip() {
       const d = myDeck(); const ok = deckOk(); const st = A.stats(d);
       return `<div class="deckstrip">
         <div class="ds-h"><b>เด็คที่จะใช้เล่น</b><span class="pill ${ok ? 'good' : 'bad'}">${d.length}/10 ใบ · ${st}★${ok ? ' · พร้อมเล่น' : ''}</span></div>
         <div class="ds-t">${d.map(x => tile(BY[x])).join('') || '<span class="muted">ยังไม่มีการ์ดในเด็ค</span>'}</div>
+        ${ok ? statLine(d) : ''}
         ${ok ? '' : `<p class="warn">เด็คต้องมี 10 ใบพอดี ไม่เกิน 25 ดาว และชื่อไม่ซ้ำ — จัดเด็คก่อน หรือเลือกเด็คตัวอย่าง</p>`}
         <div class="ds-b"><button class="btn" data-g="build">✎ จัด/แก้เด็ค</button><button class="btn" data-g="preset" data-k="ice">ใช้เด็ค ไอซ์-เอิร์ธ</button><button class="btn" data-g="preset" data-k="fire">ใช้เด็ค ไฟ-ไอซ์</button><button class="btn" data-g="preset" data-k="rand">สุ่มเด็ค</button></div>
       </div>`;
@@ -212,6 +230,7 @@
     }
     function actionHtml() {
       const st = G.st;
+      if (G.rp) return replayBar();
       if (G.prompt) {
         const pr = G.prompt.pr; let btns = '';
         if (pr.kind === 'yn') btns += `<button class="btn primary" data-g="yn" data-v="0">ยืนยัน</button>`;
@@ -288,12 +307,13 @@
       const cells = Array.from({ length: 16 }, (_, d) => cellHtml(d, st.fx, fxStart)).join('');
       const opp = 1 - G.me;
       const logs = st.log.slice(-14).reverse().map(l => `<li>${esc(l)}</li>`).join('');
+      checkRecord();
       let end = '';
-      if ((st.over || G.endInfo) && !G.hideEnd) {
+      if ((st.over || G.endInfo) && !G.hideEnd && !G.rp) {
         let title, sub;
         if (G.endInfo && !st.over) { const w = G.endInfo.w; title = w === G.me ? 'คุณชนะ!' : 'คุณแพ้'; sub = G.endInfo.resign ? (w === G.me ? 'คู่ต่อสู้ยอมแพ้' : 'คุณยอมแพ้') : G.endInfo.timeout ? (w === G.me ? 'คู่ต่อสู้หายไปจากเกม' : 'ถูกตัดสินแพ้เพราะหายไปนาน') : ''; }
         else { const r = st.res, w = r.w; title = w === G.me ? 'คุณชนะ!' : 'คุณแพ้'; sub = `${E.score(st, G.me)} : ${E.score(st, opp)}${r.tie ? ' · คะแนนเท่ากัน ตัดสินด้วย First Player Token' : ''}`; }
-        end = `<div class="end" role="dialog" aria-label="ผลเกม"><div class="endbox ${title.includes('ชนะ') ? 'win' : 'lose'}"><h2>${title}</h2><p>${esc(sub)}</p><div class="btnrow center">${G.mode === 'bot' ? '<button class="btn primary" data-g="again">เล่นอีกครั้ง</button>' : ''}<button class="btn ${G.mode === 'bot' ? '' : 'primary'}" data-g="lobby">กลับสนามเล่น</button><button class="btn" data-g="hideend">ดูกระดาน</button></div></div></div>`;
+        end = `<div class="end" role="dialog" aria-label="ผลเกม"><div class="endbox ${title.includes('ชนะ') ? 'win' : 'lose'}"><h2>${title}</h2><p>${esc(sub)}</p><div class="btnrow center">${G.mode === 'bot' ? '<button class="btn primary" data-g="again">เล่นอีกครั้ง</button>' : G.mode === 'online' ? `<button class="btn primary" data-g="rematch" ${G.rmWait ? 'disabled' : ''}>${G.rmWait ? 'รอคู่ต่อสู้…' : 'เล่นอีกครั้ง'}</button>` : ''}${st.over ? '<button class="btn" data-g="replay">▶ ดูย้อนหลัง</button>' : ''}<button class="btn ${G.mode === 'bot' || G.mode === 'online' ? '' : 'primary'}" data-g="lobby">กลับสนามเล่น</button><button class="btn" data-g="hideend">ดูกระดาน</button></div></div></div>`;
       }
       const net = G.mode === 'online' && !st.over && !G.endInfo && G.opp_age > 15 ? `<div class="banner warnb"><span>คู่ต่อสู้ไม่ตอบสนองมา ${Math.round(G.opp_age)} วินาที</span>${G.opp_age > 75 ? '<button class="btn primary" data-g="claim">ประกาศชนะ (อีกฝ่ายหาย)</button>' : '<span class="muted">รอสักครู่ก่อนจะประกาศชนะได้</span>'}</div>` : '';
       const desync = G.err ? `<div class="banner warnb"><span>${esc(G.err)}</span></div>` : '';
@@ -331,7 +351,7 @@
       let od = opt.oppDeck === 'fire' ? A.PRESET.fire : opt.oppDeck === 'ice' ? A.PRESET.ice : opt.oppDeck === 'mirror' ? mine : randDeck();
       const start = opt.first === 'me' ? 0 : opt.first === 'bot' ? 1 : Math.random() < .5 ? 0 : 1;
       G.mode = 'bot'; G.me = 0; G.o = null; setNames('คุณ', 'บอท');
-      G.st = E.newGame({ decks: [mine, od.slice()], start, seed: (Math.random() * 2e9) | 0, rules: { elem: opt.elem } });
+      G.st = E.newGame({ decks: [mine, od.slice()], start, seed: (Math.random() * 2e9) | 0, rules: { elem: opt.elem }, keep: true });
       Object.assign(G, { screen: 'game', sel: null, tgt: null, will: null, prompt: null, pop: null, busy: false, thinking: false, fxN: 0, endInfo: null, err: '', hideEnd: false, refillSeen: null });
       render(); window.scrollTo({ top: 0 });
       if (opt.first === 'rand') showDice(start, G.st.rng, () => { if (G.mode === 'bot') { render(); botLoop(); } }); else { closeDice(); botLoop(); }
@@ -343,7 +363,8 @@
         if (G.st !== tok) return;
         const lv = opt.level; const mv = E.botMove(st, lv);
         if (!mv) break;
-        E.apply(st, mv, E.autoChooser(lv));
+        const gen = E.applyG(st, mv), ac = E.autoChooser(lv); let r = gen.next();
+        while (!r.done) { const pr = r.value; let ans; if (pr.who === G.me) { G.thinking = false; ans = await askUser(pr); } else ans = ac(pr, st); if (G.st !== tok) return; r = gen.next(ans); }
         G.thinking = false; render();
         if (!st.over && st.turn !== G.me) await sleep(250);
       }
@@ -386,6 +407,7 @@
       const cell = ev.target.closest('[data-cell]'), hand = ev.target.closest('[data-hand]'), g = ev.target.closest('[data-g]');
       if (g && g.matches('.pop') && ev.target.closest('.popbox')) return; /* แตะในกล่องไม่ปิดป๊อปอัป */
       if (g) return gAction(g);
+      if (G.rp) return;
       if (!G.st || G.screen !== 'game') return;
       if (hand) {
         const code = hand.dataset.hand;
@@ -431,6 +453,22 @@
       try { const key = newKey(); const r = await fn(key); startOnline({ id: r.id, code: r.code, role: r.role, key }); }
       catch (e) { G.err = e.message; render(); }
     }
+    /* ---------- ดูย้อนหลัง ---------- */
+    function replayBar() {
+      const r = G.rp, n = r.states.length;
+      return `<div class="abar prompt rpbar"><b>▶ ดูย้อนหลัง</b><span>ตาที่ ${r.i} / ${n - 1}</span><span class="grow"></span>
+        <button class="btn" data-g="rp" data-d="first" aria-label="ต้นเกม">⏮</button><button class="btn" data-g="rp" data-d="-1" aria-label="ย้อน">◀</button><button class="btn" data-g="rp" data-d="1" aria-label="ถัดไป">▶</button><button class="btn" data-g="rp" data-d="last" aria-label="จบเกม">⏭</button><button class="btn primary" data-g="rpexit">ปิด</button></div>`;
+    }
+    function startReplay() {
+      const real = G.st; if (!real || !real.snaps || !real.over) { toast('ยังไม่มีข้อมูลย้อนหลังของเกมนี้'); return; }
+      const states = real.snaps.map(x => JSON.parse(x)); states.push(real);
+      G.rp = { real, states, i: states.length - 1 }; G.hideEnd = true; G.sel = null; G.tgt = null; G.will = null; G.pop = null; G.st = states[G.rp.i]; render();
+    }
+    function rpGo(d) {
+      const r = G.rp; if (!r) return; const n = r.states.length;
+      r.i = d === 'first' ? 0 : d === 'last' ? n - 1 : Math.max(0, Math.min(n - 1, r.i + +d)); G.st = r.states[r.i]; G.fxN = 0; render();
+    }
+    function rpExit() { const r = G.rp; if (!r) return; G.st = r.real; G.rp = null; G.hideEnd = false; render(); }
     async function gAction(b) {
       const a = b.dataset.g;
       if (a === 'build') return setMode('build');
@@ -451,6 +489,24 @@
       if (a === 'claim') { try { const r = await rpc('claim_timeout', { p_id: G.o.id, p_key: G.o.key }); if (!r.ok) toast('ยังประกาศชนะไม่ได้ — ' + (r.reason || '')); } catch (e) { toast(e.message); } return; }
       if (a === 'lobby') { if (G.mode === 'bot' && G.st && !G.st.over && !confirm('ออกจากเกมนี้?')) return; return backToLobby(); }
       if (a === 'again') return startBot();
+      if (a === 'replay') return startReplay();
+      if (a === 'rp') return rpGo(b.dataset.d);
+      if (a === 'rpexit') return rpExit();
+      if (a === 'rematch') {
+        const role = G.me, oppName = G.names[1 - G.me], mk = ++G.rmTok;
+        if (role === 0) return netAction(key => rpc('create_match', { p_name: myName(), p_key: key, p_deck: myDeck(), p_rules: { elem: opt.elem } }));
+        G.rmWait = true; render(); toast('รอ ' + oppName + ' กดเล่นอีกครั้ง… (สูงสุด 90 วินาที)');
+        const t0 = Date.now();
+        while (mk === G.rmTok && G.rmWait && Date.now() - t0 < 90000) {
+          try {
+            const r = await A.sb('matches?status=eq.waiting&select=code,host_name,host_seen&order=created_at.desc&limit=20');
+            if (r.ok) { const row = (await r.json()).find(x => x.host_name === oppName && Date.now() - new Date(x.host_seen).getTime() < 20000); if (row && mk === G.rmTok) { G.rmWait = false; return netAction(key => rpc('join_match', { p_code: row.code, p_name: myName(), p_key: key, p_deck: myDeck() })); } }
+          } catch (e) {}
+          await sleep(1500);
+        }
+        if (mk === G.rmTok) { G.rmWait = false; toast('คู่ต่อสู้ยังไม่กดเล่นอีกครั้ง'); render(); }
+        return;
+      }
       if (a === 'hideend') { G.hideEnd = true; return render(); }
       if (a === 'pclose') { G.pop = null; return render(); }
       if (a === 'pcancel') { G.sel = null; G.tgt = null; G.will = null; G.pop = null; return render(); }
@@ -462,8 +518,8 @@
       if (a === 'yn') return answer(0);
     }
     function backToLobby() {
-      G.pollTok++; if (G.mode === 'online' && G.o && G.st && G.st.over) store.del(SESS_KEY);
-      closeDice(); Object.assign(G, { pop: null, screen: 'lobby', st: null, o: null, mode: null, prompt: null, busy: false, thinking: false, endInfo: null, err: '', sel: null, tgt: null, will: null, hideEnd: false });
+      G.rmTok++; G.rmWait = false; G.pollTok++; if (G.mode === 'online' && G.o && G.st && G.st.over) store.del(SESS_KEY);
+      closeDice(); Object.assign(G, { rp: null, pop: null, screen: 'lobby', st: null, o: null, mode: null, prompt: null, busy: false, thinking: false, endInfo: null, err: '', sel: null, tgt: null, will: null, hideEnd: false });
       render(); loadRooms();
     }
 
@@ -501,11 +557,11 @@
       if (r.gone || r.role == null) { toast('ห้องนี้ไม่อยู่แล้ว'); return leaveOnline(false); }
       if (G.err && G.netErr === 0 && /เชื่อมต่อ/.test(G.err)) G.err = '';
       G.opp_age = r.opp_age == null ? 0 : r.opp_age; G.me = r.role; o.code = r.code;
-      setNames(r.role === 0 ? r.host_name : r.guest_name || 'ผู้เล่น', r.role === 0 ? (r.guest_name || 'คู่ต่อสู้') : r.host_name);
+      setNames(r.host_name || 'ผู้เล่น', r.guest_name || 'คู่ต่อสู้'); /* ดัชนี = หมายเลขผู้เล่น (0 = เจ้าของห้อง) */
       let fresh = false;
       if (!G.st) {
         if (r.status === 'waiting' || !r.deck_b) { if (G.screen === 'wait') renderWait(); return; }
-        G.st = E.newGame(setupFrom(r)); G.o.setup = setupFrom(r); G.applied = 0; G.screen = 'game'; G.fxN = 0; fresh = true; G.refillSeen = null; G.pop = null;
+        G.st = E.newGame(Object.assign(setupFrom(r), { keep: true })); G.o.setup = setupFrom(r); G.applied = 0; G.screen = 'game'; G.fxN = 0; fresh = true; G.refillSeen = null; G.pop = null;
         if (!resumeQuiet && !r.moves.length && r.status === 'playing') showDice(r.start, r.seed);
         if (!resumeQuiet) toast('เจอคู่แล้ว! ' + G.names[1 - G.me] + (G.st.turn === G.me ? ' — คุณเริ่มก่อน' : ' เริ่มก่อน'));
       }
@@ -525,7 +581,7 @@
     let resumeQuiet = false;
     async function rebuildOnline() {
       const o = G.o; const r = await rpc('poll', { p_id: o.id, p_key: o.key, p_after: 0 });
-      const st = E.newGame(setupFrom(r)); G.applied = 0;
+      const st = E.newGame(Object.assign(setupFrom(r), { keep: true })); G.applied = 0;
       for (const m of r.moves) { E.apply(st, { c: m.c, x: m.x }, E.replayChooser(m.ch || [])); G.applied++; }
       G.st = st; G.fxN = 0; if (r.status === 'done' && !st.over) G.endInfo = r.result;
     }
@@ -546,7 +602,14 @@
     function renderRules() {
       const kw = A.DATA.kw || [];
       const wheel = A.EL.map(e => { const b = (C.find(c => c.e === e && c.b.length) || { b: [] }).b; return `<tr><td>${A.elChip(e)}</td><td>${b.map(x => A.elChip(x, true)).join(' ')}</td><td>${A.EL.filter(z => ((C.find(c => c.e === z && c.b.length) || { b: [] }).b).includes(e)).map(x => A.elChip(x, true)).join(' ')}</td></tr>`; }).join('');
-      $('viewRules').innerHTML = `<section class="card"><h2>กติกาที่ใช้ในโหมดเล่น</h2><ul>${E.RULES_NOTE.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      $('viewRules').innerHTML = `<section class="card"><h2>วิธีเล่นแบบย่อ</h2><ol class="howto">
+          <li><b>เตรียม:</b> แต่ละคนมี Deck 10 ใบ (รวมไม่เกิน 25 ดาว ชื่อไม่ซ้ำ) ถือไว้ในมือ สนาม Arena ขนาด 4×4 ผู้เล่นผลัดกันเดินตามลำดับ</li>
+          <li><b>ตาของคุณ:</b> เลือกการ์ด 1 ใบจากมือ วางลงช่องว่าง 1 ช่อง (ถ้ามือหมดแต่ Void ยังมีการ์ด คู่แข่งจะสุ่มการ์ดจาก Void ให้คุณ Summon)</li>
+          <li><b>Snatch Check:</b> การ์ดที่เพิ่งวางมองไปตามทิศ Snatch-Sight (ช่องสีแดงบนเข็มทิศการ์ด) ถ้าเจอการ์ดฝ่ายตรงข้าม ชนะด้วย <i>พลังมากกว่า</i> หรือ <i>ธาตุได้เปรียบ</i> (และเป้าหมายไม่มี Ward) ก็ Snatch การ์ดนั้นมาเป็นของเรา</li>
+          <li><b>ความสามารถ:</b> On Summon ทำงานทันทีที่วาง, On Snatch ทำงานหลัง Snatch Check ถ้า Snatch สำเร็จ ส่วนการ์ดที่มี Ward จะถูก Snatch ไม่ได้ชั่วคราว</li>
+          <li><b>จบเกม:</b> เมื่อ Arena เต็ม (หรือไม่มีใครมีการ์ดให้ลงอีก) นับการ์ดที่ตัวเองคุมอยู่ ใครมากกว่าชนะ ถ้าเท่ากันคนถือ First Player Token ชนะ</li>
+          <li><b>เคล็ดลับ:</b> ลองดู "ผลการ Snatch ที่จะเกิด" ก่อนวางทุกครั้ง (ในโหมดเล่นจะแสดงให้เมื่อเลือกช่อง) และใช้แท็บ "แนะนำสลับ" ในหน้าจัด Deck ช่วยปรับเด็ค</li></ol></section>
+        <section class="card"><h2>กติกาที่ใช้ในโหมดเล่น</h2><ul>${E.RULES_NOTE.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
         <p class="muted">หมายเหตุ: หน้า Rules ทางการของ monsnatch.com โหลดด้วย JavaScript จึงอ่านอัตโนมัติไม่ได้ กติกาข้างบนสร้างจากคำอธิบายคำศัพท์ทางการ + ข้อความบนการ์ด 181 ใบ (ความสามารถทุกใบทำงานในเกมแล้ว) ถ้าส่วนไหนต่างจากกติกาจริง แจ้งได้เพื่อปรับแก้</p></section>
         <section class="card"><h3>วงล้อธาตุ</h3><div class="tblwrap"><table class="tbl"><thead><tr><th>ธาตุ</th><th>ชนะ</th><th>แพ้ให้</th></tr></thead><tbody>${wheel}<tr><td>${A.elChip('origin')}</td><td class="muted">ไม่ชนะธาตุใด</td><td class="muted">ถูกทุกธาตุเอาชนะ</td></tr></tbody></table></div></section>
         <section class="card"><h3>คำศัพท์ในเกม (ข้อมูลทางการ)</h3><dl class="gl2">${kw.map(k => `<dt>${esc(k.n)}</dt><dd>${esc(k.t || k.d)}</dd>`).join('')}</dl></section>`;
