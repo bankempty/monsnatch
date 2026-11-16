@@ -10,13 +10,15 @@
     const root = $('gameRoot');
     const OPT_KEY = 'ms-play-opt', SESS_KEY = 'ms-session';
     const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const LV = { easy: 'ง่าย', normal: 'ปกติ', hard: 'ยาก' };
+    const LV = { easy: 'ง่าย', normal: 'ปกติ', hard: 'ยาก', expert: 'เซียน (คิดนาน)' };
+    const SPD = { slow: 'ช้า (ดูทัน)', normal: 'ปกติ', fast: 'เร็ว' };
+    const SPDMS = { slow: { think: 2000, hold: 1500, post: 1800 }, normal: { think: 1000, hold: 800, post: 900 }, fast: { think: 400, hold: 150, post: 250 } };
     const store = {
       get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } },
       set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
       del(k) { try { localStorage.removeItem(k); } catch (e) {} },
     };
-    const opt = Object.assign({ level: 'normal', oppDeck: 'fire', first: 'rand', elem: true, name: '' }, store.get(OPT_KEY, {}));
+    const opt = Object.assign({ speed: 'slow', level: 'hard', oppDeck: 'fire', first: 'rand', elem: true, name: '' }, store.get(OPT_KEY, {}));
     const saveOpt = () => store.set(OPT_KEY, opt);
 
     /* ---------- global game state ---------- */
@@ -153,6 +155,7 @@
         <section class="card">
           <h3><span class="ico">🤖</span> ฝึกเล่นกับบอท</h3>
           <label class="fld">ความยาก<select id="oLevel">${Object.keys(LV).map(k => `<option value="${k}" ${opt.level === k ? 'selected' : ''}>${LV[k]}</option>`).join('')}</select></label>
+          <label class="fld">ความเร็วบอท<select id="oSpeed">${Object.keys(SPD).map(k => `<option value="${k}" ${opt.speed === k ? 'selected' : ''}>${SPD[k]}</option>`).join('')}</select></label>
           <label class="fld">เด็คของบอท<select id="oOpp"><option value="fire" ${opt.oppDeck === 'fire' ? 'selected' : ''}>ไฟ-ไอซ์ (บุกหนัก)</option><option value="ice" ${opt.oppDeck === 'ice' ? 'selected' : ''}>ไอซ์-เอิร์ธ (ป้องกันแน่น)</option><option value="rand" ${opt.oppDeck === 'rand' ? 'selected' : ''}>สุ่มเด็คใหม่ทุกเกม</option><option value="mirror" ${opt.oppDeck === 'mirror' ? 'selected' : ''}>เด็คเดียวกับเรา</option></select></label>
           <label class="fld">ใครเริ่มก่อน<select id="oFirst"><option value="rand" ${opt.first === 'rand' ? 'selected' : ''}>สุ่ม</option><option value="me" ${opt.first === 'me' ? 'selected' : ''}>เราก่อน</option><option value="bot" ${opt.first === 'bot' ? 'selected' : ''}>บอทก่อน</option></select></label>
           <label class="chk"><input type="checkbox" id="oElem" ${opt.elem ? 'checked' : ''}> ธาตุได้เปรียบทำให้ Snatch สำเร็จ (ปิด = ใช้ Power อย่างเดียว)</label>
@@ -189,13 +192,14 @@
       const cls = ['cell']; let inner = '';
       const pk = G.prompt && G.prompt.cells && G.prompt.cells.includes(i);
       const tg = G.tgt === i;
+      if (G.botPick && G.botPick.x === i && !c) { cls.push('botpick'); inner = `<span class="cw ghost"><span class="gc cimg" style="--c:var(--el-${BY[G.botPick.c].e})">${img(BY[G.botPick.c])}</span><b class="pw">${BY[G.botPick.c].p}</b></span>`; }
       if (c) {
         const cd = BY[c.c], mine = c.k === G.me;
         cls.push(mine ? 'mine' : 'theirs', 'full');
         const p = E.pw(st, i), base = cd.p;
         const w = E.warded(st, c);
         cls.push(c.o !== G.me ? 'o1' : 'o0'); /* การ์ดของเรา = หัวตั้ง, ของคู่ต่อสู้ = กลับหัว (ตามเจ้าของเดิม แม้ถูก Snatch) */
-        inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward">🛡</i>' : ''}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
+        inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward">🛡</i>' : ''}${(() => { const dr = E.pwDrop(st, i); return dr > 0 ? `<i class="pdrop" title="พลังจะลด ${dr} ในเทิร์นของอีกฝ่าย (ความสามารถการ์ดฝั่งตรงข้าม)">▼${dr}</i>` : ''; })()}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
         inner = `<span class="cw">${inner}</span>`;
         if (c.o !== c.k) inner = inner.replace(/<\/span>$/, `<i class="own ${c.o === G.me ? 'me' : 'op'}" title="เจ้าของเดิม"></i></span>`);
         for (const f of fxs.slice(fxStart)) if (f.i === i) cls.push('fx-' + f.t);
@@ -238,6 +242,7 @@
         return `<div class="abar prompt"><b>${esc(pr.text || 'เลือก')}</b><span>${pr.kind === 'card' ? 'แตะการ์ดที่ไฮไลต์ในมือ' : pr.kind === 'cell' ? 'แตะช่องที่ไฮไลต์บนกระดาน' : ''}</span><span class="grow"></span>${btns}</div>`;
       }
       if (st.over) return `<div class="abar"><b>จบเกม</b></div>`;
+      if (G.botPick) return `<div class="abar"><b>บอทจะวาง ${esc(BY[G.botPick.c].n)} ที่ช่อง ${E.cellName(G.botPick.x)}</b></div>`;
       if (G.thinking) return `<div class="abar"><span class="dots">บอทกำลังคิด</span></div>`;
       if (st.turn !== G.me) return `<div class="abar"><span class="dots">รอ ${esc(G.names[st.turn])} เดิน</span></div>`;
       if (G.busy) return `<div class="abar"><span class="dots">กำลังส่งตาเดิน</span></div>`;
@@ -297,7 +302,7 @@
       if (G.pop === 'info' && G.inspect) {
         const ic = G.inspect.cell != null && st.board[G.inspect.cell] ? st.board[G.inspect.cell] : null;
         return `<div class="pop" role="dialog" aria-modal="true" aria-label="รายละเอียดการ์ด" data-g="pclose"><div class="popbox" data-keep="1"><button class="px" data-g="pclose" aria-label="ปิด">×</button>${cardDetail(G.inspect.code)}
-          ${ic ? `<p class="muted pnote">ตอนนี้ฝั่ง ${esc(G.names[ic.k])} คุมอยู่ · พลังปัจจุบัน ${E.pw(st, G.inspect.cell)}</p>` : ''}<div class="btnrow center"><button class="btn" data-g="pclose">ปิด</button></div></div></div>`;
+          ${ic ? `<p class="muted pnote">ตอนนี้ฝั่ง ${esc(G.names[ic.k])} คุมอยู่ · พลังปัจจุบัน ${E.pw(st, G.inspect.cell)}${E.pwDrop(st, G.inspect.cell) > 0 ? ` · <b>จะถูกลดอีก ${E.pwDrop(st, G.inspect.cell)} ในเทิร์นของอีกฝ่าย</b> (ความสามารถของการ์ดฝั่งตรงข้าม)` : ''}</p>` : ''}<div class="btnrow center"><button class="btn" data-g="pclose">ปิด</button></div></div></div>`;
       }
       return '';
     }
@@ -352,23 +357,33 @@
       const start = opt.first === 'me' ? 0 : opt.first === 'bot' ? 1 : Math.random() < .5 ? 0 : 1;
       G.mode = 'bot'; G.me = 0; G.o = null; setNames('คุณ', 'บอท');
       G.st = E.newGame({ decks: [mine, od.slice()], start, seed: (Math.random() * 2e9) | 0, rules: { elem: opt.elem }, keep: true });
-      Object.assign(G, { screen: 'game', sel: null, tgt: null, will: null, prompt: null, pop: null, busy: false, thinking: false, fxN: 0, endInfo: null, err: '', hideEnd: false, refillSeen: null });
+      Object.assign(G, { screen: 'game', sel: null, tgt: null, will: null, prompt: null, pop: null, busy: false, thinking: false, botPick: null, fxN: 0, endInfo: null, err: '', hideEnd: false, refillSeen: null });
       render(); window.scrollTo({ top: 0 });
       if (opt.first === 'rand') showDice(start, G.st.rng, () => { if (G.mode === 'bot') { render(); botLoop(); } }); else { closeDice(); botLoop(); }
     }
     async function botLoop() {
       const st = G.st; const tok = G.st;
+      if (G.botRun === st) return; G.botRun = st; /* กันลูปซ้อน: เกมหนึ่งมีลูปบอทเดียว */
+      try { await botLoopBody(st, tok); } finally { if (G.botRun === st) G.botRun = null; }
+    }
+    async function botLoopBody(st, tok) {
       while (G.st === tok && !st.over && st.turn !== G.me && G.mode === 'bot') {
-        G.thinking = true; render(); await sleep(650 + Math.random() * 450);
+        const sp = SPDMS[opt.speed] || SPDMS.slow;
+        G.thinking = true; G.botPick = null; render(); await sleep(60);
         if (G.st !== tok) return;
-        const lv = opt.level; const mv = E.botMove(st, lv);
+        const t0 = Date.now(), lv = opt.level, mv = E.botMove(st, lv);
         if (!mv) break;
+        await sleep(Math.max(0, sp.think * (0.8 + Math.random() * 0.5) - (Date.now() - t0)));
+        if (G.st !== tok) return;
+        G.botPick = { c: mv.c, x: mv.x }; render(); await sleep(sp.hold); /* โชว์ก่อนว่าบอทจะวางใบไหนช่องไหน */
+        if (G.st !== tok) return;
+        G.botPick = null;
         const gen = E.applyG(st, mv), ac = E.autoChooser(lv); let r = gen.next();
         while (!r.done) { const pr = r.value; let ans; if (pr.who === G.me) { G.thinking = false; ans = await askUser(pr); } else ans = ac(pr, st); if (G.st !== tok) return; r = gen.next(ans); }
         G.thinking = false; render();
-        if (!st.over && st.turn !== G.me) await sleep(250);
+        if (!st.over && st.turn !== G.me) await sleep(sp.post); else await sleep(Math.min(sp.post, 600));
       }
-      G.thinking = false; if (G.st === tok) render();
+      G.thinking = false; G.botPick = null; if (G.st === tok) render();
     }
 
     /* ---------- human move ---------- */
@@ -440,6 +455,7 @@
     function readLobbyInputs() {
       const g = id => $(id);
       if (g('oLevel')) opt.level = g('oLevel').value;
+      if (g('oSpeed')) opt.speed = g('oSpeed').value;
       if (g('oOpp')) opt.oppDeck = g('oOpp').value;
       if (g('oFirst')) opt.first = g('oFirst').value;
       if (g('oElem')) opt.elem = g('oElem').checked;
