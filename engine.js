@@ -111,16 +111,18 @@
   function cnt(st, i, player, same) { // count other cards within 1 space, same=true: controlled by player, false: not by player
     let n = 0; for (const j of nb(i)) { const z = st.board[j]; if (z && (same ? z.k === player : z.k !== player)) n++; } return n;
   }
-  function pw(st, i) {
-    const c = st.board[i]; if (!c) return 0; let v = CARD[c.c].p;
+  function pw(st, i, tp) { /* tp = ผู้เล่นที่ถือว่ากำลังเล่นเทิร์น (ค่าเริ่มต้น = เทิร์นปัจจุบัน) ใช้ดูผลของความสามารถ "ในเทิร์นของคุณ" */
+    const c = st.board[i]; if (!c) return 0; let v = CARD[c.c].p; if (tp == null) tp = st.turn;
     for (let j = 0; j < SZ; j++) {
       const h = st.board[j]; if (!h || j === i) continue; const pm = AB[h.c].s.pm; if (!pm) continue;
-      if (h.k === h.o && h.k === st.turn && h.k !== c.k) {
+      if (h.k === h.o && h.k === tp && h.k !== c.k) {
         for (const q of nb(i)) { const z = st.board[q]; if (z && q !== j && z.k === h.k && CARD[z.c].e === pm) v--; }
       }
     }
     return v;
   }
+  /** พลังที่ถูกลดเมื่อถึงเทิร์นของฝ่ายตรงข้ามของเจ้าของการ์ดใบนี้ (เช่นจาก MIASMOTH) */
+  function pwDrop(st, i) { const c = st.board[i]; return c ? CARD[c.c].p - pw(st, i, 1 - c.k) : 0; }
   function beats(a, d) { const A = CARD[a], D = CARD[d]; return !!((A.b || []).includes(D.e) || (AB[d].s.adv && D.e === 'origin' && A.e !== 'origin')); }
   function warded(st, c) { return c.w > 0 && c.w >= st.mv; }
   function immune(st, a, d, byAb) {
@@ -169,6 +171,7 @@
     const me = st.board[idx]; if (!me || me.noSn === st.mv) return 0;
     const ts = [];
     for (const d of CARD[me.c].d) { const j = step(idx, d, me.k); if (j >= 0 && st.board[j] && st.board[j].k !== me.k && !ts.includes(j)) ts.push(j); }
+    if (!st.quiet) for (const j of ts) { const dd = st.board[j], b0 = CARD[dd.c].p, now = pw(st, j); if (now !== b0) say(st, `${cn(dd.c)} พลังลดจาก ${b0} เหลือ ${now} (ความสามารถของฝั่งที่กำลังเล่น)`); }
     let ok = ts.filter(j => canMain(st, idx, j, byAb));
     if (ts.length > 1) ok = ok.filter(j => !(AB[st.board[j].c].s.tog && st.board[j].k === st.board[j].o)); /* 10.1.4: นับจากชุดผู้เข้าข่ายเบื้องต้น แม้ตัวอื่นจะมี Ward */
     return doSnatch(st, idx, ok, 'ยึด');
@@ -525,7 +528,7 @@
   function trySim(st, mv, level) {
     const t = clone(st); try { apply(t, mv, autoChooser(level)); } catch (e) { return null; } return t;
   }
-  function botMove(st, level) {
+  function botMoveOld(st, level) {
     level = level || 'normal'; const p = st.turn; const ms = legal(st); if (!ms.length) return null;
     const scored = [];
     for (const mv of ms) {
@@ -556,6 +559,63 @@
     return best.mv;
   }
 
+  /* ---------- บอทแบบค้นหา (hard/expert): minimax + alpha-beta + iterative deepening จำกัดเวลา ---------- */
+  function termVal(st, me) { const a = score(st, me), b = score(st, 1 - me); return (st.res && st.res.w === me ? 100 : -100) + (a - b); }
+  const W = { pow: 0.12, ward: 0.3, expo: 1, hand: 0.015, dir: 0.4 };
+  function evalDeep(st, me) {
+    if (st.over) return termVal(st, me);
+    let v = score(st, me) - score(st, 1 - me);
+    let expo = 0;
+    for (let i = 0; i < SZ; i++) { const c = st.board[i]; if (!c) continue;
+      const sg = c.k === me ? 1 : -1; if (warded(st, c)) v += sg * W.ward; v += sg * W.pow * CARD[c.c].p;
+      /* ความเสี่ยง: การ์ดที่มีเพื่อนข้างเคียงรอบ ๆ ถูกยึดต่อเนื่องยาก และการ์ดพลังต่ำที่โดนศัตรูชี้ถึง */
+      let en = 0; for (const j of nb(i)) { const z = st.board[j]; if (z && z.k !== c.k) en++; }
+      expo += W.expo * sg * (en ? -0.04 * en : 0.02) * (c.k === c.o ? 1 : 0.5);
+    }
+    v += expo;
+    /* มือ: เก็บการ์ดดีไว้ตอนท้าย และไม่เปลืองการ์ดที่ยึดได้ไกล */
+    let h = 0; for (const c of st.hands[me]) h += CARD[c].p + CARD[c].d.length * W.dir; for (const c of st.hands[1 - me]) h -= CARD[c].p + CARD[c].d.length * W.dir; v += W.hand * h;
+    return v;
+  }
+  function searchMove(st, level) {
+    const me = st.turn, cfg = level === 'expert' ? { ms: 1500, maxD: 8, K: [12, 9, 7, 6] } : { ms: 650, maxD: 5, K: [10, 7, 5, 4] };
+    const t0 = Date.now(); let timeout = false, reached = 2; cfg.ms *= (searchMove.scale || 1);
+    const root = legal(st); if (!root.length) return null; if (root.length === 1) return root[0];
+    const ch = []; for (const mv of root) { const t = trySim(st, mv, 'normal'); if (t) ch.push({ mv, t, v: evalDeep(t, me) }); }
+    if (!ch.length) return root[0];
+    function search(t, depth, alpha, beta, ply) {
+      if (t.over || depth <= 0) return evalDeep(t, me);
+      if (Date.now() - t0 > cfg.ms) { timeout = true; return evalDeep(t, me); }
+      const maxing = t.turn === me, ms = legal(t), kids = [];
+      for (const mv of ms) { const c = trySim(t, mv, 'normal'); if (c) kids.push({ c, v: evalDeep(c, me) }); }
+      if (!kids.length) return evalDeep(t, me);
+      kids.sort((x, y) => maxing ? y.v - x.v : x.v - y.v);
+      const K = cfg.K[Math.min(ply, cfg.K.length - 1)], use = kids.slice(0, K);
+      let best = maxing ? -1e9 : 1e9;
+      for (const k of use) {
+        const v = search(k.c, depth - 1, alpha, beta, ply + 1);
+        if (maxing) { if (v > best) best = v; if (best > alpha) alpha = best; } else { if (v < best) best = v; if (best < beta) beta = best; }
+        if (alpha >= beta || timeout) break;
+      }
+      return best;
+    }
+    ch.sort((a, b) => b.v - a.v); let done = ch.map(c => ({ mv: c.mv, v: c.v }));
+    for (let d = 2; d <= cfg.maxD; d++) {
+      timeout = false; const cur = []; let alpha = -1e9;
+      for (const c of ch) { const v = search(c.t, d - 1, alpha, 1e9, 1); if (timeout) break; cur.push({ mv: c.mv, v }); if (v - 0.12 > alpha) alpha = v - 0.12; } /* หน้าต่าง alpha เผื่อ 0.12: ค่าที่ต่ำกว่าถือเป็นขอบเขตไม่ใช่ค่าจริง จึงไม่ถูกนับเป็นตัวเลือกที่ "เกือบดีที่สุด" */
+      if (timeout || cur.length < ch.length) break;
+      done = cur.slice(); reached = d; ch.sort((a, b) => (done.find(x => x.mv === b.mv) || { v: -1e9 }).v - (done.find(x => x.mv === a.mv) || { v: -1e9 }).v);
+      if (done.some(x => Math.abs(x.v) >= 90) && d >= 4) break;
+    }
+    done.sort((a, b) => b.v - a.v); searchMove.depth = reached;
+    const top = done.filter(x => x.v > done[0].v - 0.12 || x === done[0]); return top[Math.floor(Math.random() * top.length)].mv;
+  }
+  function botMove(st, level) {
+    level = level || 'normal';
+    if (level === 'hard' || level === 'expert') return searchMove(st, level);
+    return botMoveOld(st, level);
+  }
+
   /** full replay helper for online: build state from setup + move list */
   function replay(setup, moves) {
     const st = newGame(setup);
@@ -563,6 +623,6 @@
     return st;
   }
 
-  return { setNamer: f => { NAMER = f; }, rawName, init, newGame, clone, legal, applyG, apply, run, replay, replayChooser, autoChooser, botMove, score, pw, previewSnatch, canMain, cellName, step, nb, dist, warded, beats,
+  return { W, searchMove, botMoveOld, pwDrop, setNamer: f => { NAMER = f; }, rawName, init, newGame, clone, legal, applyG, apply, run, replay, replayChooser, autoChooser, botMove, score, pw, previewSnatch, canMain, cellName, step, nb, dist, warded, beats,
     get CARD() { return CARD; }, get AB() { return AB; }, UNSUP, RULES_NOTE, SZ, EL, PN };
 });
