@@ -497,10 +497,31 @@ body{background:radial-gradient(1200px 500px at 85% -10%,color-mix(in srgb,var(-
 
 /* auto-fill */
 #autoBox{margin:0 0 10px}
-.autob{border:1px solid var(--line,#d6d9e0);border-radius:12px;padding:10px 12px;background:var(--card,#fff);display:grid;gap:6px}
+.autob{border:1px solid var(--line,#d6d9e0);border-radius:12px;padding:10px 12px;background:var(--surface,#fff);display:grid;gap:6px}
 .autob .arow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .autob select{width:auto}
 /* replay / stats / how-to */
 .rpbar{flex-wrap:wrap;gap:6px}
 .statl{margin:6px 0 0;font-size:13px}
 .howto{padding-left:20px;display:grid;gap:8px;line-height:1.55}
+
+/* ask AI */
+.askthread{display:grid;gap:8px;margin:10px 0;max-height:60vh;overflow:auto}
+.amsg{border-radius:12px;padding:8px 12px;line-height:1.55}
+.amsg.u{background:var(--accent-soft,#e8eefc);justify-self:end;max-width:88%}
+.amsg.a{background:var(--surface,#fff);border:1px solid var(--line,#d6d9e0)}
+.amsg p{margin:4px 0}.amsg ul{margin:4px 0;padding-left:20px}.amsg h4{margin:8px 0 2px}
+.askcode{white-space:pre-wrap;font-size:13px}
+.askdeck{border:1px dashed var(--line,#b9bec9);border-radius:10px;padding:8px;margin-top:8px;display:grid;gap:6px}
+.askdeck.bad{border-color:#d33}
+.askex{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{border:1px solid var(--line,#c8ccd6);background:var(--surface,#fff);border-radius:999px;padding:6px 12px;cursor:pointer;font:inherit;text-align:left}
+#askIn{width:100%;box-sizing:border-box;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line,#c8ccd6);background:var(--surface,#fff);color:inherit;resize:vertical}
+.askrow{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.askrow .grow{flex:1}
+
+/* bot pacing + power drop marker */
+.cell.botpick{outline:3px solid var(--accent,#2f6df6);outline-offset:-3px;animation:bpulse 0.9s ease-in-out infinite}
+.cell .ghost{opacity:.55}
+@keyframes bpulse{50%{outline-color:transparent}}
+.pdrop{position:absolute;left:3px;bottom:3px;font-size:11px;font-style:normal;font-weight:700;color:#fff;background:#8a3fc2;border-radius:6px;padding:0 4px;line-height:16px}
