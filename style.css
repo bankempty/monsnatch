@@ -525,3 +525,9 @@ body{background:radial-gradient(1200px 500px at 85% -10%,color-mix(in srgb,var(-
 .cell .ghost{opacity:.55}
 @keyframes bpulse{50%{outline-color:transparent}}
 .pdrop{position:absolute;left:3px;bottom:3px;font-size:11px;font-style:normal;font-weight:700;color:#fff;background:#8a3fc2;border-radius:6px;padding:0 4px;line-height:16px}
+
+/* Ward badge */
+.cell .wd{right:auto;bottom:auto;top:3px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:800;letter-spacing:.04em;line-height:15px;padding:0 6px;border-radius:8px;background:#f2b705;color:#2a1d00;filter:none;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.cell.o1 .cw .wd{transform:translateX(-50%) rotate(180deg)}
+.cell.warded .cimg{box-shadow:0 0 0 2px #f2b705,0 0 10px 2px rgba(242,183,5,.65)}
+@media(max-width:520px){.cell .wd{font-size:9px;padding:0 4px}}
