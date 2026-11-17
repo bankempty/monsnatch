@@ -198,8 +198,9 @@
         cls.push(mine ? 'mine' : 'theirs', 'full');
         const p = E.pw(st, i), base = cd.p;
         const w = E.warded(st, c);
+        if (w) cls.push('warded');
         cls.push(c.o !== G.me ? 'o1' : 'o0'); /* การ์ดของเรา = หัวตั้ง, ของคู่ต่อสู้ = กลับหัว (ตามเจ้าของเดิม แม้ถูก Snatch) */
-        inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward">🛡</i>' : ''}${(() => { const dr = E.pwDrop(st, i); return dr > 0 ? `<i class="pdrop" title="พลังจะลด ${dr} ในเทิร์นของอีกฝ่าย (ความสามารถการ์ดฝั่งตรงข้าม)">▼${dr}</i>` : ''; })()}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
+        inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward — ถูก Snatch ไม่ได้ (ถึงสิ้นเทิร์นถัดไปของคู่ต่อสู้)">🛡 WARD</i>' : ''}${(() => { const dr = E.pwDrop(st, i); return dr > 0 ? `<i class="pdrop" title="พลังจะลด ${dr} ในเทิร์นของอีกฝ่าย (ความสามารถการ์ดฝั่งตรงข้าม)">▼${dr}</i>` : ''; })()}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
         inner = `<span class="cw">${inner}</span>`;
         if (c.o !== c.k) inner = inner.replace(/<\/span>$/, `<i class="own ${c.o === G.me ? 'me' : 'op'}" title="เจ้าของเดิม"></i></span>`);
         for (const f of fxs.slice(fxStart)) if (f.i === i) cls.push('fx-' + f.t);
@@ -643,7 +644,7 @@
     // auto-resume an online session (e.g. after refresh) when the user is on the play tab
     const sess = store.get(SESS_KEY, null);
     if (sess && Date.now() - (sess.t || 0) < 864e5 && (q.get('room') || h === 'play')) { resumeQuiet = true; startOnline(sess, true); setTimeout(() => { resumeQuiet = false; }, 4000); }
-    window.MSGAME = { G, setMode, rpc };
+    window.MSGAME = { G, setMode, rpc, render };
   }
   if (window.MSAPP) boot(); else document.addEventListener('ms-ready', boot, { once: true });
 })();
