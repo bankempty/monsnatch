@@ -192,7 +192,7 @@
       const cls = ['cell']; let inner = '';
       const pk = G.prompt && G.prompt.cells && G.prompt.cells.includes(i);
       const tg = G.tgt === i;
-      if (G.botPick && G.botPick.x === i && !c) { cls.push('botpick'); inner = `<span class="cw ghost"><span class="gc cimg" style="--c:var(--el-${BY[G.botPick.c].e})">${img(BY[G.botPick.c])}</span><b class="pw">${BY[G.botPick.c].p}</b></span>`; }
+      if (G.botPick && G.botPick.x === i && !c) { cls.push('botpick', 'o1'); /* การ์ดบอทหันหน้าเข้าหาบอทตั้งแต่ตอนเงา เหมือนตอนวางจริง */ inner = `<span class="cw ghost"><span class="gc cimg" style="--c:var(--el-${BY[G.botPick.c].e})">${img(BY[G.botPick.c])}</span><b class="pw">${BY[G.botPick.c].p}</b></span>`; }
       if (c) {
         const cd = BY[c.c], mine = c.k === G.me;
         cls.push(mine ? 'mine' : 'theirs', 'full');
