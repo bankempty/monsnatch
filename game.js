@@ -18,7 +18,7 @@
       set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
       del(k) { try { localStorage.removeItem(k); } catch (e) {} },
     };
-    const opt = Object.assign({ speed: 'slow', level: 'hard', oppDeck: 'fire', first: 'rand', elem: true, name: '' }, store.get(OPT_KEY, {}));
+    const opt = Object.assign({ speed: 'slow', level: 'hard', oppDeck: 'ml1', first: 'rand', elem: true, name: '' }, store.get(OPT_KEY, {}));
     const saveOpt = () => store.set(OPT_KEY, opt);
 
     /* ---------- global game state ---------- */
@@ -72,7 +72,7 @@
         const p = pool.slice().sort(() => Math.random() - .5); const out = []; let s = 0; const nm = new Set();
         for (const c of p) { if (nm.has(c.n) || s + c.s > A.MAXSTAR) continue; out.push(c.c); nm.add(c.n); s += c.s; if (out.length === 10) return out; }
       }
-      return A.PRESET.fire.slice();
+      return A.PRESET.ml1.slice();
     }
     const myDeck = () => A.getDeck();
     const deckOk = () => A.validDeck(myDeck());
@@ -133,7 +133,7 @@
         <div class="ds-t">${d.map(x => tile(BY[x])).join('') || '<span class="muted">ยังไม่มีการ์ดในเด็ค</span>'}</div>
         ${ok ? statLine(d) : ''}
         ${ok ? '' : `<p class="warn">เด็คต้องมี 10 ใบพอดี ไม่เกิน 25 ดาว และชื่อไม่ซ้ำ — จัดเด็คก่อน หรือเลือกเด็คตัวอย่าง</p>`}
-        <div class="ds-b"><button class="btn" data-g="build">✎ จัด/แก้เด็ค</button><button class="btn" data-g="preset" data-k="ice">ใช้เด็ค ไอซ์-เอิร์ธ</button><button class="btn" data-g="preset" data-k="fire">ใช้เด็ค ไฟ-ไอซ์</button><button class="btn" data-g="preset" data-k="rand">สุ่มเด็ค</button></div>
+        <div class="ds-b"><button class="btn" data-g="build">✎ จัด/แก้เด็ค</button><button class="btn" data-g="preset" data-k="ml1">ใช้เด็คแชมป์ ML 1</button><button class="btn" data-g="preset" data-k="ml2">ใช้เด็คแชมป์ ML 2</button><button class="btn" data-g="preset" data-k="rand">สุ่มเด็ค</button></div>
       </div>`;
     }
     function sessBanner() {
@@ -156,7 +156,7 @@
           <h3><span class="ico">🤖</span> ฝึกเล่นกับบอท</h3>
           <label class="fld">ความยาก<select id="oLevel">${Object.keys(LV).map(k => `<option value="${k}" ${opt.level === k ? 'selected' : ''}>${LV[k]}</option>`).join('')}</select></label>
           <label class="fld">ความเร็วบอท<select id="oSpeed">${Object.keys(SPD).map(k => `<option value="${k}" ${opt.speed === k ? 'selected' : ''}>${SPD[k]}</option>`).join('')}</select></label>
-          <label class="fld">เด็คของบอท<select id="oOpp"><option value="fire" ${opt.oppDeck === 'fire' ? 'selected' : ''}>ไฟ-ไอซ์ (บุกหนัก)</option><option value="ice" ${opt.oppDeck === 'ice' ? 'selected' : ''}>ไอซ์-เอิร์ธ (ป้องกันแน่น)</option><option value="rand" ${opt.oppDeck === 'rand' ? 'selected' : ''}>สุ่มเด็คใหม่ทุกเกม</option><option value="mirror" ${opt.oppDeck === 'mirror' ? 'selected' : ''}>เด็คเดียวกับเรา</option></select></label>
+          <label class="fld">เด็คของบอท<select id="oOpp"><option value="ml1" ${opt.oppDeck === 'ml1' ? 'selected' : ''}>แชมป์ Major League — Deck 1</option><option value="ml2" ${opt.oppDeck === 'ml2' ? 'selected' : ''}>แชมป์ Major League — Deck 2</option><option value="rand" ${opt.oppDeck === 'rand' ? 'selected' : ''}>สุ่มเด็คใหม่ทุกเกม</option><option value="mirror" ${opt.oppDeck === 'mirror' ? 'selected' : ''}>เด็คเดียวกับเรา</option></select></label>
           <label class="fld">ใครเริ่มก่อน<select id="oFirst"><option value="rand" ${opt.first === 'rand' ? 'selected' : ''}>สุ่ม</option><option value="me" ${opt.first === 'me' ? 'selected' : ''}>เราก่อน</option><option value="bot" ${opt.first === 'bot' ? 'selected' : ''}>บอทก่อน</option></select></label>
           <label class="chk"><input type="checkbox" id="oElem" ${opt.elem ? 'checked' : ''}> ธาตุได้เปรียบทำให้ Snatch สำเร็จ (ปิด = ใช้ Power อย่างเดียว)</label>
           <button class="btn primary big" data-g="bot" ${dis}>เริ่มเล่นกับบอท</button>
@@ -367,7 +367,8 @@
     /* ---------- bot mode ---------- */
     function startBot() {
       const mine = myDeck(); if (!A.validDeck(mine)) return;
-      let od = opt.oppDeck === 'fire' ? A.PRESET.fire : opt.oppDeck === 'ice' ? A.PRESET.ice : opt.oppDeck === 'mirror' ? mine : randDeck();
+      const oq = opt.oppDeck === 'fire' ? 'ml2' : opt.oppDeck === 'ice' ? 'ml1' : opt.oppDeck; /* ค่าที่เคยบันทึกไว้ */
+      let od = A.PRESET[oq] ? A.PRESET[oq] : oq === 'mirror' ? mine : randDeck();
       const start = opt.first === 'me' ? 0 : opt.first === 'bot' ? 1 : Math.random() < .5 ? 0 : 1;
       G.mode = 'bot'; G.me = 0; G.o = null; setNames('คุณ', 'บอท');
       G.st = E.newGame({ decks: [mine, od.slice()], start, seed: (Math.random() * 2e9) | 0, rules: { elem: opt.elem }, keep: true });
