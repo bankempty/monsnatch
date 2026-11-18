@@ -37,8 +37,8 @@ const L2E = {E:'earth',W:'water',A:'air',F:'fire',T:'thunder',I:'ice',N:'nature'
 const E2L = {}; Object.keys(L2E).forEach(k => E2L[L2E[k]] = k);
 const MAXSTAR = 25, DECKSIZE = 10, BENCH = 117;
 const PRESET = {
-  ice: ['1161','1135','1122','1132','1144','1073','1085','1095','1116','1004'],
-  fire: ['1157','1130','1136','1134','1138','1075','1079','1087','1113','1022']
+  ml1: ['1031','1161','1171','1147','1142','1138','1133','1113','1022','1004'], /* แชมป์ Major League — Deck 1 */
+  ml2: ['1067','1180','1061','1179','1150','1166','1053','1050','1139','1047']  /* แชมป์ Major League — Deck 2 */
 };
 const BB = {}; EL.forEach(e => BB[e] = []);
 const ELBEATS = {};
@@ -79,7 +79,7 @@ C.forEach(c => { c.sc = c.p + (c.p >= 9 ? 1 : c.p === 8 ? .5 : 0) + .8 * Math.mi
 const isVuln = (c, e) => c.e === 'origin' || (BB[c.e] || []).includes(e);
 
 /* ---------- state ---------- */
-const S = {deck:PRESET.ice.slice(), pane:'deck', tab:'overview', q:'', fEl:'all', fStar:'all', sort:'score', view:'list', open:{}, opp:null, oppTouched:false};
+const S = {deck:PRESET.ml1.slice(), pane:'deck', tab:'overview', q:'', fEl:'all', fStar:'all', sort:'score', view:'list', open:{}, opp:null, oppTouched:false};
 try {
   const raw = localStorage.getItem('msdb-v2');
   if (raw) {
@@ -218,7 +218,7 @@ function swapReasons(r){
 }
 /* gauntlet ฝั่งตรงข้ามคงที่ (seed คงที่) เพื่อให้เทียบก่อน/หลังได้แฟร์ */
 function gauntlet(){
-  const out = [PRESET.ice.slice(), PRESET.fire.slice()]; let s = 20240611;
+  const out = [PRESET.ml1.slice(), PRESET.ml2.slice()]; let s = 20240611;
   const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
   const pool = C.filter(c => c.e !== 'origin');
   while (out.length < 8) {
@@ -402,6 +402,81 @@ function shareImage(){
   x.fillStyle = '#6b7482'; x.font = `18px ${F}`; x.fillText('Monsnatch Deck Builder · เครื่องมือแฟนเกม', 40, H - 22);
   cv.toBlob(b => { if (!b) { toast('สร้างรูปไม่สำเร็จ'); return; } const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'monsnatch-deck.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('บันทึกรูป Deck แล้ว'); }, 'image/png');
 }
+
+
+/* ---------- ถามตอบด้วย AI (เรียก /api/ask บน Vercel; คีย์ AI อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น) ---------- */
+const ASK = {msgs: [], draft: '', busy: false, withDeck: true, err: ''};
+const ASK_EX = ['อยากจัด Deck ธาตุ Spirit + Air เป็นหลัก ควรจัดยังไง', 'Deck ของฉันอ่อนธาตุอะไร ควรสลับใบไหน', 'แนะนำ Deck สายป้องกัน ใช้ Ward เป็นหลัก', 'การ์ดไหนคุ้มดาวที่สุด'];
+const askUrl = () => (window.MONSNATCH_CONFIG && window.MONSNATCH_CONFIG.ASK_URL) || '/api/ask';
+function mdLite(t){
+  const out = []; let list = false, code = false;
+  const inl = x => esc(x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  String(t).split('\n').forEach(line => {
+    if (/^```/.test(line)) { code = !code; if (code) { if (list) { out.push('</ul>'); list = false; } out.push('<pre class="askcode">'); } else out.push('</pre>'); return; }
+    if (code) { out.push(esc(line) + '\n'); return; }
+    const li = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (li) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + inl(li[1]) + '</li>'); return; }
+    if (list) { out.push('</ul>'); list = false; }
+    const h = line.match(/^#{1,4}\s+(.*)$/);
+    if (h) out.push('<h4>' + inl(h[1]) + '</h4>'); else if (line.trim()) out.push('<p>' + inl(line) + '</p>');
+  });
+  if (list) out.push('</ul>'); if (code) out.push('</pre>');
+  return out.join('');
+}
+const NAMEIDX = {}; C.forEach(c => NAMEIDX[c.n.toUpperCase()] = c);
+function askDeckOf(text){
+  const m = String(text).match(/```deck\s*([\s\S]*?)```/i); if (!m) return null;
+  const names = m[1].split('\n').map(x => x.replace(/^[\s\-*\d.)]+/, '').trim().toUpperCase()).filter(Boolean);
+  const cards = names.map(n => NAMEIDX[n]), bad = names.filter((n, i) => !cards[i]);
+  const ok = !bad.length && cards.length === DECKSIZE && new Set(cards.map(c => c.n)).size === DECKSIZE && cards.reduce((a, c) => a + c.s, 0) <= MAXSTAR;
+  return {cards: cards.filter(Boolean), bad, ok, stars: cards.filter(Boolean).reduce((a, c) => a + c.s, 0)};
+}
+function askMsgHtml(m, i, last){
+  if (m.role === 'user') return `<div class="amsg u"><p>${esc(m.content)}</p></div>`;
+  const body = m.content.replace(/```deck[\s\S]*?(```|$)/i, '');
+  const dk = askDeckOf(m.content);
+  const dkHtml = dk ? `<div class="askdeck ${dk.ok ? 'ok' : 'bad'}"><b>Deck ที่แนะนำ (${dk.cards.length} ใบ · ${dk.stars}★)</b><div class="chips">${dk.cards.map(c => pcard(c)).join('')}</div>${dk.ok ? `<button class="btn primary" data-act="askdeck" data-i="${i}">ใช้ Deck นี้</button>` : `<p class="note">ตรวจแล้ว Deck นี้ไม่ผ่านกติกา${dk.bad.length ? ' (มีชื่อที่ไม่รู้จัก: ' + esc(dk.bad.join(', ')) + ')' : ''} จึงไม่เปิดให้กดใช้ — ลองให้ AI แก้ใหม่</p>`}</div>` : '';
+  return `<div class="amsg a" ${last ? 'id="askLast"' : ''}>${mdLite(body) || '<p class="muted">…</p>'}${dkHtml}</div>`;
+}
+function tabAsk(){
+  const msgs = ASK.msgs.map((m, i) => askMsgHtml(m, i, i === ASK.msgs.length - 1 && m.role === 'assistant')).join('');
+  return `<div class="sec" style="margin-top:0"><h3>🤖 ถาม AI เรื่องการจัด Deck</h3>
+    <p class="note">ถามได้เลย เช่น จัด Deck ตามธาตุที่อยากเล่น หรือให้ช่วยดู Deck ปัจจุบัน AI รู้จักการ์ดทั้ง 181 ใบและกติกา แต่ตอบเป็นคำแนะนำ ไม่ได้รับประกันผล ควรตรวจกับการจำลอง "แนะนำสลับ" อีกที</p>
+    ${ASK.msgs.length ? '' : `<div class="chips askex">${ASK_EX.map(q => `<button class="chip" data-act="askex" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>`}
+    <div class="askthread" id="askThread">${msgs}</div>
+    ${ASK.err ? `<div class="al bad"><b class="ic">!</b><span>${esc(ASK.err)}</span></div>` : ''}
+    <textarea id="askIn" rows="3" maxlength="500" placeholder="พิมพ์คำถาม… (Ctrl+Enter เพื่อส่ง)" aria-label="คำถามถึง AI">${esc(ASK.draft)}</textarea>
+    <div class="askrow"><label class="chk"><input type="checkbox" id="askWithDeck" ${ASK.withDeck ? 'checked' : ''}> ให้ AI ดู Deck ปัจจุบัน (${S.deck.length} ใบ)</label>
+      <span class="grow"></span>${ASK.msgs.length ? '<button class="btn" data-act="askclear">เริ่มใหม่</button>' : ''}<button class="btn primary" data-act="asksend" ${ASK.busy ? 'disabled' : ''}>${ASK.busy ? 'กำลังตอบ…' : 'ส่ง'}</button></div></div>`;
+}
+async function askSend(q){
+  q = (q != null ? q : ASK.draft).trim(); if (!q || ASK.busy) return;
+  ASK.err = ''; ASK.busy = true; ASK.draft = ''; ASK.msgs.push({role: 'user', content: q}); ASK.msgs.push({role: 'assistant', content: ''});
+  if (S.tab === 'ask') renderTabs();
+  const th = () => $('askThread'); if (th()) th().scrollTop = th().scrollHeight;
+  try {
+    const r = await fetch(askUrl(), {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({messages: ASK.msgs.slice(0, -1), deck: ASK.withDeck ? S.deck : []})});
+    const ct = r.headers.get('content-type') || '';
+    if (!r.ok || ct.includes('application/json')) {
+      let j = {}; try { j = await r.json(); } catch (e) {}
+      throw new Error(r.status === 404 ? 'ยังไม่ได้เปิดใช้ AI บนเว็บนี้ (ไม่พบ /api/ask) — ต้องอัปโหลดไฟล์ api/ask.js และตั้ง ANTHROPIC_API_KEY ใน Vercel' : j.message || ('ผิดพลาด (' + r.status + ')'));
+    }
+    const rd = r.body.getReader(), dec = new TextDecoder(); const m = ASK.msgs[ASK.msgs.length - 1];
+    for (;;) {
+      const {done, value} = await rd.read(); if (done) break;
+      m.content += dec.decode(value, {stream: true});
+      const el = $('askLast'); if (el && S.tab === 'ask') { el.innerHTML = mdLite(m.content.replace(/```deck[\s\S]*?(```|$)/i, '')) || '<p class="muted">…</p>'; if (th()) th().scrollTop = th().scrollHeight; }
+    }
+    if (!m.content.trim()) throw new Error('AI ไม่ตอบกลับ ลองถามใหม่อีกครั้ง');
+  } catch (e) {
+    ASK.err = e.message || 'ส่งคำถามไม่สำเร็จ';
+    const last = ASK.msgs[ASK.msgs.length - 1]; if (last && last.role === 'assistant' && !last.content.trim()) { ASK.msgs.pop(); const u = ASK.msgs.pop(); if (u) ASK.draft = u.content; }
+  }
+  ASK.busy = false; if (S.tab === 'ask') renderTabs();
+}
+document.addEventListener('input', e => { if (e.target.id === 'askIn') ASK.draft = e.target.value; });
+document.addEventListener('change', e => { if (e.target.id === 'askWithDeck') ASK.withDeck = e.target.checked; });
+document.addEventListener('keydown', e => { if (e.target.id === 'askIn' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); askSend(); } });
 
 /* ---------- pool ---------- */
 function reasonBlocked(c){
@@ -603,7 +678,7 @@ function tabCounter(A){
 function renderTabs(){
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
   const A = analyze(S.deck);
-  $('tabBody').innerHTML = ({overview:tabOverview, elements:tabElements, play:tabPlay, counter:tabCounter, swap:tabSwap})[S.tab](A);
+  $('tabBody').innerHTML = ({overview:tabOverview, elements:tabElements, play:tabPlay, counter:tabCounter, swap:tabSwap, ask:tabAsk})[S.tab](A);
 }
 function renderAll(){ renderHeader(); renderPool(); renderDeck(); renderTabs(); }
 
@@ -630,6 +705,13 @@ document.addEventListener('click', ev => {
   else if (ds.act === 'simrun') runSim();
   else if (ds.act === 'autofill') doAutoFill();
   else if (ds.act === 'shareimg') shareImage();
+  else if (ds.act === 'asksend') askSend();
+  else if (ds.act === 'askex') askSend(ds.q);
+  else if (ds.act === 'askclear') { ASK.msgs = []; ASK.err = ''; renderTabs(); }
+  else if (ds.act === 'askdeck') {
+    const dk = askDeckOf((ASK.msgs[+ds.i] || {}).content || ''); if (!dk || !dk.ok) { toast('Deck นี้ใช้ไม่ได้'); return; }
+    AUTO.locked = null; AUTO.prev = null; AUTO.n = 0; S.deck = dk.cards.map(c => c.c); S.oppTouched = false; save(); renderAll(); toast('ใส่ Deck ที่ AI แนะนำแล้ว (' + stats(S.deck) + '★)');
+  }
   else if (ds.act === 'autoundo') autoUndo();
   else if (ds.act === 'zoom') zoom(ds.code);
   else if (ds.view) { S.view = ds.view; try { localStorage.setItem('msdb-view', S.view); } catch (e) {} renderPool(); }
