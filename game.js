@@ -187,6 +187,18 @@
     }
 
     /* ---- game screen ---- */
+    const IMMW = { el: es => 'ไม่ถูก Snatch โดย Momon ธาตุ ' + es.map(e => (A.ELN[e] || [e, e])[1]).join('/'), i4a: () => 'มีการ์ดพวกเดียวกันรอบตัว 4 ใบขึ้นไป จึงถูก Snatch ไม่ได้', i4e: () => 'มีศัตรูรอบตัว 4 ใบขึ้นไป จึงถูก Snatch ไม่ได้', tog: () => 'ไม่ถูก Snatch พร้อมการ์ดใบอื่น (ถ้า Snatch Check เล็งการ์ดมากกว่า 1 ใบ จะไม่ถูกยึด)' };
+    function badgesHtml(st, i, p, base) {
+      const b = E.statusOf(st, i).map(s => {
+        if (s.k === 'ward') return '<i class="sb ward" title="Ward — ถูก Snatch ไม่ได้ (ถึงสิ้นเทิร์นถัดไปของคู่ต่อสู้)">🛡 WARD</i>';
+        if (s.k === 'imm') return `<i class="sb imm" title="${esc(IMMW[s.why](s.els))}">🚫 กันยึด</i>`;
+        if (s.k === 'shield') return '<i class="sb shield" title="กันความสามารถ — ถูก Snatch โดยความสามารถของฝ่ายตรงข้ามไม่ได้ (Snatch Check ปกติยังยึดได้)">✦ กันสกิล</i>';
+        if (s.k === 'drop') return `<i class="sb drop ${s.now ? 'now' : ''}" title="${s.now ? 'ตอนนี้พลังถูกลด' : 'ในเทิร์นของอีกฝ่ายพลังจะถูกลด'} ${s.n} (ความสามารถของการ์ดฝั่งตรงข้าม เช่น MIASMOTH)">▼ −${s.n}</i>`;
+        if (s.k === 'nosn') return '<i class="sb nosn" title="Snatch ไม่ได้ในเทิร์นนี้">💤 ไม่ยึด</i>';
+        return '';
+      }).join('');
+      return b ? `<span class="stk">${b}</span>` : '';
+    }
     function cellHtml(d, fxs, fxStart) {
       const i = di2i(d), st = G.st, c = st.board[i];
       const cls = ['cell']; let inner = '';
@@ -200,10 +212,10 @@
         const w = E.warded(st, c);
         if (w) cls.push('warded');
         cls.push(c.o !== G.me ? 'o1' : 'o0'); /* การ์ดของเรา = หัวตั้ง, ของคู่ต่อสู้ = กลับหัว (ตามเจ้าของเดิม แม้ถูก Snatch) */
-        inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${w ? '<i class="wd" title="Ward — ถูก Snatch ไม่ได้ (ถึงสิ้นเทิร์นถัดไปของคู่ต่อสู้)">🛡 WARD</i>' : ''}${(() => { const dr = E.pwDrop(st, i); return dr > 0 ? `<i class="pdrop" title="พลังจะลด ${dr} ในเทิร์นของอีกฝ่าย (ความสามารถการ์ดฝั่งตรงข้าม)">▼${dr}</i>` : ''; })()}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
+        inner = `<span class="gc cimg" style="--c:var(--el-${cd.e})">${img(cd)}</span><b class="pw ${p > base ? 'up' : p < base ? 'dn' : ''}">${p}</b>${badgesHtml(st, i, p, base)}<i class="mk ${mine ? 'me' : 'op'}"></i>`;
         inner = `<span class="cw">${inner}</span>`;
         if (c.o !== c.k) inner = inner.replace(/<\/span>$/, `<i class="own ${c.o === G.me ? 'me' : 'op'}" title="เจ้าของเดิม"></i></span>`);
-        for (const f of fxs.slice(fxStart)) if (f.i === i) cls.push('fx-' + f.t);
+        for (const f of fxs.slice(fxStart)) if (f.i === i) { cls.push('fx-' + f.t); if (f.t === 'incite' || f.t === 'ward') inner = inner.replace(/<\/span>$/, `<i class="flash ${f.t}">${f.t === 'incite' ? 'INCITE!' : 'WARD!'}</i></span>`); }
       } else {
         cls.push('empty');
         if (G.sel && st.turn === G.me && !G.prompt && !G.busy) cls.push('can');
@@ -336,6 +348,7 @@
         <aside class="gright">
           <section class="card infobox">${infoHtml()}</section>
           <section class="card logbox"><h3>บันทึกเกม</h3><ol class="log">${logs || '<li class="muted">ยังไม่มีการเดิน</li>'}</ol></section>
+          <section class="card legend"><h3>สัญลักษณ์บนการ์ด</h3><ul><li><i class="sb ward">🛡 WARD</i> ถูก Snatch ไม่ได้ (ถึงสิ้นเทิร์นถัดไปของคู่ต่อสู้)</li><li><i class="sb imm">🚫 กันยึด</i> ถูก Snatch ไม่ได้ตามเงื่อนไขของการ์ด (วางเมาส์/แตะดูเหตุผล)</li><li><i class="sb shield">✦ กันสกิล</i> กันการ Snatch จากความสามารถของฝ่ายตรงข้าม</li><li><i class="sb drop now">▼ −1</i> พลังถูกลด (สีแดง = ลดอยู่ตอนนี้ / ม่วง = จะลดในเทิร์นของอีกฝ่าย)</li><li><i class="sb nosn">💤 ไม่ยึด</i> Snatch ไม่ได้ในเทิร์นนี้</li></ul></section>
         </aside>
       </div>${end}${modalHtml()}`;
       if (st.refill && st.refill.at === st.mv && st.refill !== G.refillSeen) { G.refillSeen = st.refill; const r = st.refill; toast(r.p === G.me ? 'มือคุณหมด — Void Fallback: คู่ต่อสู้สุ่มการ์ดจาก Void ให้คุณ Summon 🎴 ' + BY[r.cards[0]].n : 'คู่ต่อสู้มือหมด — Void Fallback: คุณสุ่มการ์ดจาก Void ให้เขา 🎴 ' + BY[r.cards[0]].n); }
