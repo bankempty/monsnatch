@@ -123,6 +123,21 @@
   }
   /** พลังที่ถูกลดเมื่อถึงเทิร์นของฝ่ายตรงข้ามของเจ้าของการ์ดใบนี้ (เช่นจาก MIASMOTH) */
   function pwDrop(st, i) { const c = st.board[i]; return c ? CARD[c.c].p - pw(st, i, 1 - c.k) : 0; }
+  /** สถานะที่ควรแสดงบนการ์ด: ward / imm (ห้ามถูก Snatch ตามเงื่อนไข) / shield (กันความสามารถ) / drop (ลดพลัง) / nosn (Snatch ไม่ได้ในเทิร์นนี้) */
+  function statusOf(st, i) {
+    const c = st.board[i]; if (!c) return []; const s = AB[c.c].s, out = [];
+    if (warded(st, c)) out.push({ k: 'ward' });
+    if (c.k === c.o) {
+      if (s.imEl) out.push({ k: 'imm', why: 'el', els: s.imEl });
+      if (s.i4a && cnt(st, i, c.k, true) >= 4) out.push({ k: 'imm', why: 'i4a' });
+      if (s.i4e && cnt(st, i, c.k, false) >= 4) out.push({ k: 'imm', why: 'i4e' });
+      if (s.tog) out.push({ k: 'imm', why: 'tog' });
+    }
+    if (st.shield[c.k] >= st.mv) out.push({ k: 'shield' });
+    const dr = pwDrop(st, i); if (dr > 0) out.push({ k: 'drop', n: dr, now: pw(st, i) < CARD[c.c].p });
+    if (c.noSn === st.mv) out.push({ k: 'nosn' });
+    return out;
+  }
   function beats(a, d) { const A = CARD[a], D = CARD[d]; return !!((A.b || []).includes(D.e) || (AB[d].s.adv && D.e === 'origin' && A.e !== 'origin')); }
   function warded(st, c) { return c.w > 0 && c.w >= st.mv; }
   function immune(st, a, d, byAb) {
@@ -276,7 +291,7 @@
     }
     return chosen;
   }
-  const wardTo = (st, j) => { const c = st.board[j]; if (c) { c.w = st.mv + 1; fx(st, 'ward', j); } };
+  const wardTo = (st, j) => { const c = st.board[j]; if (c && !warded(st, c)) { c.w = st.mv + 1; fx(st, 'ward', j); } }; /* 13.2.4: มี Ward อยู่แล้ว ได้อีกก็ไม่มีผล ไม่ต่ออายุ */
   function handOf(st, p, el, extra) { return [...new Set(st.hands[p].filter(c => (!el || CARD[c].e === el) && (!extra || extra(CARD[c]))))]; }
   function weakest(st, p) { return st.hands[p].slice().sort((a, b) => (CARD[a].s - CARD[b].s) || (CARD[a].p - CARD[b].p) || (a < b ? -1 : 1))[0]; }
 
@@ -623,6 +638,6 @@
     return st;
   }
 
-  return { W, searchMove, botMoveOld, pwDrop, setNamer: f => { NAMER = f; }, rawName, init, newGame, clone, legal, applyG, apply, run, replay, replayChooser, autoChooser, botMove, score, pw, previewSnatch, canMain, cellName, step, nb, dist, warded, beats,
+  return { statusOf, W, searchMove, botMoveOld, pwDrop, setNamer: f => { NAMER = f; }, rawName, init, newGame, clone, legal, applyG, apply, run, replay, replayChooser, autoChooser, botMove, score, pw, previewSnatch, canMain, cellName, step, nb, dist, warded, beats,
     get CARD() { return CARD; }, get AB() { return AB; }, UNSUP, RULES_NOTE, SZ, EL, PN };
 });
